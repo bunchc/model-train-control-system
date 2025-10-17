@@ -1,0 +1,23 @@
+{
+  "name": "Model Train Control Dev Container",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "forwardPorts": [8000, 3000, 1883, 9001],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-azuretools.vscode-docker",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint"
+      ],
+      "settings": {
+        "terminal.integrated.shell.linux": "/bin/bash"
+      }
+    }
+  },
+  "postCreateCommand": "/bin/bash -lc 'python3 -m pip install --upgrade pip && pip install --user -r central-api/requirements.txt || true && (cd frontend/web && npm ci || true)'",
+  "remoteUser": "vscode"
+}

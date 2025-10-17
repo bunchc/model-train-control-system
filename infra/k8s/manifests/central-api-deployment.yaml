@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: central-api
+  labels:
+    app: central-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: central-api
+  template:
+    metadata:
+      labels:
+        app: central-api
+    spec:
+      containers:
+      - name: central-api
+        image: central-api:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MQTT_BROKER_URL
+          value: "mqtt://mqtt-broker:1883"
+        - name: MQTT_TOPIC_PREFIX
+          value: "trains"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "1"
+      imagePullSecrets:
+      - name: regcred

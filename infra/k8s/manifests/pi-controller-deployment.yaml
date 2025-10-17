@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pi-controller
+  labels:
+    app: pi-controller
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: pi-controller
+  template:
+    metadata:
+      labels:
+        app: pi-controller
+    spec:
+      containers:
+      - name: pi-controller
+        image: your-docker-repo/pi-controller:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: MQTT_BROKER
+          value: "mqtt://your-mqtt-broker:1883"
+        - name: TRAIN_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: pi-config
+          mountPath: /app/config
+      volumes:
+      - name: pi-config
+        configMap:
+          name: pi-config-map
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pi-controller
+spec:
+  selector:
+    app: pi-controller
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: ClusterIP

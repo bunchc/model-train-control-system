@@ -1,0 +1,20 @@
+train_id: "train_1"
+mqtt_broker:
+  host: "mqtt.example.com"
+  port: 1883
+  username: "user"
+  password: "password"
+commands_topic: "trains/train_1/commands"
+status_topic: "trains/train_1/status"
+hardware:
+  motor_pins:
+    - forward: 17
+    - backward: 18
+  sensor_pins:
+    - distance_sensor: 27
+  light_pins:
+    - headlight: 22
+    - taillight: 23
+telemetry_interval: 5
+max_speed: 100
+min_speed: 0
