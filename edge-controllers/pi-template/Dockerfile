@@ -6,8 +6,9 @@ WORKDIR /app
 # Copy the requirements file
 COPY requirements.txt .
 
-# Install the dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install build tools and dependencies
+RUN apt-get update && apt-get install -y gcc \
+	&& pip install --no-cache-dir -r requirements.txt
 
 # Copy the application code
 COPY app/ .

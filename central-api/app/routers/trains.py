@@ -1,19 +1,45 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
-from ..models.schemas import Train, TrainCommand
-from ..services.mqtt_adapter import publish_command, get_train_status
+from models.schemas import Train, TrainCommand, TrainStatus
+from services.mqtt_adapter import publish_command, get_train_status
 
 router = APIRouter()
 
+
 @router.get("/", response_model=List[Train])
 async def list_trains():
-    # Logic to retrieve the list of trains
-    # This could be a static list or fetched from a database
-    return [{"id": "1", "name": "Express", "status": "stopped"}, {"id": "2", "name": "Freight", "status": "running"}]
+    # Always return mock trains for dev/testing
+    trains = [
+        Train(
+            id="1",
+            name="Express",
+            status=TrainStatus(
+                train_id="1",
+                speed=0,
+                voltage=12.0,
+                current=0.0,
+                position="section_A"
+            ),
+            commands=TrainCommand(action="stop")
+        ),
+        Train(
+            id="2",
+            name="Freight",
+            status=TrainStatus(
+                train_id="2",
+                speed=50,
+                voltage=12.3,
+                current=0.8,
+                position="section_B"
+            ),
+            commands=TrainCommand(action="start")
+        )
+    ]
+    return trains
 
 @router.post("/{train_id}/command")
 async def send_command(train_id: str, command: TrainCommand):
-    success = await publish_command(train_id, command)
+    success = publish_command(train_id, command)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to send command")
     return {"message": "Command sent successfully"}

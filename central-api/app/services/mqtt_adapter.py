@@ -21,3 +21,27 @@ class MQTTAdapter:
 
     def loop_stop(self):
         self.client.loop_stop()
+
+# Example publish_command and get_train_status functions
+def publish_command(train_id, command):
+    # This is a stub. Replace with real MQTT publish logic as needed.
+    try:
+        adapter = MQTTAdapter(broker_address="mqtt", train_id=train_id)
+        adapter.connect()
+        topic = f"trains/{train_id}/commands"
+        adapter.publish(topic, str(command))
+        return True
+    except Exception as e:
+        print(f"MQTT publish error: {e}")
+        return False
+
+def get_train_status(train_id):
+    # This is a stub. Replace with real MQTT subscribe logic as needed.
+    # For now, just return a dummy status.
+    return {
+        "train_id": train_id,
+        "speed": 50,
+        "voltage": 12.3,
+        "current": 0.8,
+        "position": "section_A"
+    }

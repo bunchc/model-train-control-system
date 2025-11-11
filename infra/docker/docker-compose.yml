@@ -11,7 +11,7 @@ services:
 
   central-api:
     build:
-      context: ../central-api
+      context: ../../central-api
       dockerfile: Dockerfile
     depends_on:
       - mqtt
@@ -20,7 +20,7 @@ services:
 
   gateway:
     build:
-      context: ../gateway/orchestrator
+      context: ../../gateway/orchestrator
       dockerfile: Dockerfile
     depends_on:
       - mqtt
@@ -29,7 +29,7 @@ services:
 
   edge-controller:
     build:
-      context: ../edge-controllers/pi-template
+      context: ../../edge-controllers/pi-template
       dockerfile: Dockerfile
     depends_on:
       - mqtt

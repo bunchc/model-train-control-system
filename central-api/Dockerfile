@@ -15,5 +15,7 @@ COPY app /app
 # Expose the API port
 EXPOSE 8000
 
+# Set PYTHONPATH so app package is found
+ENV PYTHONPATH=/app
 # Command to run the application
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

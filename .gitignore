@@ -1,0 +1,189 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+.env*
+*.egg-info/
+*.sqlite3
+*.db
+# Node.js
+node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker
+*.pid
+*.sock
+*.pid.lock
+
+# VS Code
+.vscode/
+.history/
+
+# OS/Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# Build/Dist
+/dist/
+/build/
+/frontend/web/build/
+/frontend/web/dist/
+
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Misc
+*.out
+*.orig
+*.rej
+*.log
+
+# Ignore local dev/test artifacts
+infra/docker/mosquitto/data/
+infra/docker/mosquitto/log/
+infra/docker/mosquitto/mosquitto.db
+infra/docker/mosquitto/mosquitto.db.new
+infra/docker/mosquitto/mosquitto.db.old
+infra/docker/mosquitto/mosquitto.db.backup
+infra/docker/mosquitto/mosquitto.db.*
+
+# Ignore docker-compose override files
+infra/docker/docker-compose.override.yml
+
+# Ignore secrets
+secrets.env
+*.secret
+*.key
+*.pem
+
+# Ignore frontend cache
+frontend/web/.cache/
+
+# Ignore test output
+*.testoutput
+
+# Ignore edge-controller runtime files
+edge-controllers/pi-template/*.log
+edge-controllers/pi-template/*.db
+edge-controllers/pi-template/__pycache__/
+
+# Ignore central-api runtime files
+central-api/app/__pycache__/
+central-api/app/*.db
+central-api/app/*.log
+
+# Ignore gateway runtime files
+gateway/orchestrator/node_modules/
+gateway/orchestrator/*.log
+
+# Ignore persistence DB init artifacts
+persistence/influxdb/data/
+persistence/timescaledb/data/
+
+# Ignore scripts output
+scripts/*.log
+scripts/*.out
+
+# Ignore test coverage
+coverage/
+
+# Ignore backup files
+*~
+*.bak
+*.tmp
+
+# Ignore lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Ignore devcontainer
+.devcontainer/
+
+# Ignore CI/CD artifacts
+*.coverage
+*.lcov
+
+# Ignore other temp files
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore Python virtual environments
+venv/
+ENV/
+.env/
+
+# Ignore frontend build artifacts
+frontend/web/.next/
+frontend/web/.vercel/
+
+# Ignore docker volumes
+volumes/
+
+# Ignore test results
+junit.xml
+
+# Ignore pip cache
+pip-cache/
+
+# Ignore pyright
+pyrightconfig.json
+
+# Ignore pytest cache
+.pytest_cache/
+
+# Ignore mypy cache
+.mypy_cache/
+
+# Ignore coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# Ignore Sphinx build
+_build/
+
+# Ignore Terraform state
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Ignore Kubernetes manifests output
+infra/k8s/manifests/*.out
+infra/k8s/manifests/*.log
+
+# Ignore local dev scripts
+scripts/dev_up.sh.log
+
+# Ignore miscellaneous
+*.bak
+*.swp
+*.swo
+*.tmp
+*.temp
+*.out
+*.orig
+*.rej
+
+# Node.js
+# End of .gitignore

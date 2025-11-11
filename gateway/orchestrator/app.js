@@ -1,6 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const commandsController = require('./controllers/commands');
+
+const commandsRouter = require('./controllers/commands');
 const mqttClient = require('./mqtt/mqttClient');
 
 const app = express();
@@ -9,9 +10,8 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(bodyParser.json());
 
-// Routes
-app.post('/api/trains/:id/command', commandsController.handleCommand);
-app.get('/api/trains/:id/status', commandsController.getStatus);
+// Use the commands router for train commands and status
+app.use('/api/trains', commandsRouter);
 
 // Start the MQTT client
 mqttClient.connect();
