@@ -1,46 +1,38 @@
-from RPi import GPIO
+from gpiozero import PWMOutputDevice, LED, DigitalInputDevice
 import time
 
 class HardwareController:
     def __init__(self, motor_pins, light_pins, sensor_pins):
-        self.motor_pins = motor_pins
-        self.light_pins = light_pins
-        self.sensor_pins = sensor_pins
-        
-        GPIO.setmode(GPIO.BCM)
-        self.setup_pins()
+        self.motors = [PWMOutputDevice(pin) for pin in motor_pins]
+        self.lights = [LED(pin) for pin in light_pins]
+        self.sensors = [DigitalInputDevice(pin) for pin in sensor_pins]
 
-    def setup_pins(self):
-        for pin in self.motor_pins:
-            GPIO.setup(pin, GPIO.OUT)
-        for pin in self.light_pins:
-            GPIO.setup(pin, GPIO.OUT)
-        for pin in self.sensor_pins:
-            GPIO.setup(pin, GPIO.IN)
+    # Pin setup is handled by gpiozero device constructors
 
     def set_motor_speed(self, motor_index, speed):
-        if motor_index < len(self.motor_pins):
-            pwm = GPIO.PWM(self.motor_pins[motor_index], 100)
-            pwm.start(speed)
+        if motor_index < len(self.motors):
+            # speed should be 0.0 to 1.0 for PWMOutputDevice
+            self.motors[motor_index].value = speed / 100.0
             return True
         return False
 
     def turn_on_light(self, light_index):
-        if light_index < len(self.light_pins):
-            GPIO.output(self.light_pins[light_index], GPIO.HIGH)
+        if light_index < len(self.lights):
+            self.lights[light_index].on()
             return True
         return False
 
     def turn_off_light(self, light_index):
-        if light_index < len(self.light_pins):
-            GPIO.output(self.light_pins[light_index], GPIO.LOW)
+        if light_index < len(self.lights):
+            self.lights[light_index].off()
             return True
         return False
 
     def read_sensor(self, sensor_index):
-        if sensor_index < len(self.sensor_pins):
-            return GPIO.input(self.sensor_pins[sensor_index])
+        if sensor_index < len(self.sensors):
+            return self.sensors[sensor_index].value
         return None
 
     def cleanup(self):
-        GPIO.cleanup()
+        # gpiozero devices clean up automatically
+        pass
