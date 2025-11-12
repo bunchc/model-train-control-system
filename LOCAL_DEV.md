@@ -23,7 +23,7 @@ docker-compose up --build
 
 This starts:
 - `mqtt` (Eclipse Mosquitto broker) on ports 1883 (MQTT) and 9001 (WebSocket)
-- `central-api` (FastAPI) on port 8000
+- `central_api` (FastAPI) on port 8000
 - `gateway` (Express/Node) on port 3000
 - `edge-controller` (simulated Pi app)
 

@@ -8,18 +8,18 @@ This file highlights the concrete, discoverable patterns and entry points an AI 
 
 1. Big picture & primary components
    - Edge controllers: `edge-controllers/pi-template` (Pi app template). Controls hardware and publishes telemetry via MQTT.
-   - Central API: `central-api/app` (FastAPI). Exposes endpoints such as `GET /api/trains`, `POST /api/trains/{id}/command` and uses `app/services/mqtt_adapter.py` to publish/subscribe MQTT topics.
+   - Central API: `central_api/app` (FastAPI). Exposes endpoints such as `GET /api/trains`, `POST /api/trains/{id}/command` and uses `app/services/mqtt_adapter.py` to publish/subscribe MQTT topics.
    - Frontend: `frontend/web` (React + MQTT over WebSocket). Key files: `src/services/mqtt.ts`, `src/components/Dashboard.tsx`.
    - Gateway / Orchestrator: `gateway/orchestrator` (bridges MQTT/HTTP for the web UI). Look for MQTT client glue here.
-   - Infra: `infra/docker/docker-compose.yml` defines local compose setup using `eclipse-mosquitto`, `central-api`, `gateway`, and a sample `edge-controller`.
+   - Infra: `infra/docker/docker-compose.yml` defines local compose setup using `eclipse-mosquitto`, `central_api`, `gateway`, and a sample `edge-controller`.
 
 2. Communication patterns
    - MQTT is the primary runtime integration. Topics follow the pattern `trains/{train_id}/commands` and `trains/{train_id}/status`. See `docs/mqtt-topics.md` for examples.
-   - Central API publishes commands to MQTT (see `central-api/app/services/mqtt_adapter.py`) and exposes REST endpoints in `central-api/app/routers/trains.py`.
+   - Central API publishes commands to MQTT (see `central_api/app/services/mqtt_adapter.py`) and exposes REST endpoints in `central_api/app/routers/trains.py`.
    - Frontend subscribes to status topics via `frontend/web/src/services/mqtt.ts` and updates `Dashboard.tsx`.
 
 3. Conventions & code patterns to follow
-   - Keep MQTT topic strings and payload shapes consistent with `docs/mqtt-topics.md` and `central-api/app/models/schemas.py` (Pydantic models).
+   - Keep MQTT topic strings and payload shapes consistent with `docs/mqtt-topics.md` and `central_api/app/models/schemas.py` (Pydantic models).
    - Central API uses FastAPI; preserve async endpoints and Pydantic models for request/response validation.
    - Edge controller template is minimal: prefer reusing `pi-template` for new controllers.
    - Docker Compose in `infra/docker/docker-compose.yml` is authoritative for local integration testing. When adding services, wire them into compose and set `depends_on` for MQTT.
@@ -31,12 +31,12 @@ This file highlights the concrete, discoverable patterns and entry points an AI 
 5. Files to read before editing runtime behavior
    - `docs/architecture.md` — high-level intent and flow.
    - `docs/mqtt-topics.md` — canonical topic names and payload examples.
-   - `central-api/app/services/mqtt_adapter.py` — how the API publishes/subscribes.
+   - `central_api/app/services/mqtt_adapter.py` — how the API publishes/subscribes.
    - `frontend/web/src/services/mqtt.ts` — frontend subscription and publishing behavior.
 
 6. Small, low-risk improvements preferred
    - Fix mismatched topic names or JSON shapes between API and frontend/edge code.
-   - Add or update Pydantic models in `central-api/app/models/schemas.py` and keep routers' response_model in sync.
+   - Add or update Pydantic models in `central_api/app/models/schemas.py` and keep routers' response_model in sync.
    - Add unit tests for MQTT publish/subscribe logic (mocking external network calls).
 
 7. What not to change without human review
@@ -44,7 +44,7 @@ This file highlights the concrete, discoverable patterns and entry points an AI 
    - Production deployment manifests in `infra/k8s/manifests` or `infra/terraform` — these are environment-sensitive.
 
 8. Example snippets (use as templates)
-   - Publish command from API: central API calls into `publish_command(train_id, command)` in `central-api/app/services/mqtt_adapter.py`.
+   - Publish command from API: central API calls into `publish_command(train_id, command)` in `central_api/app/services/mqtt_adapter.py`.
    - Frontend publishes user actions via `fetch('/api/trains/{id}/command', { method: 'POST', body: JSON.stringify(...) })` and listens to `trains/+/status` in `frontend/web/src/services/mqtt.ts`.
 
     - Example MQTT payloads (copy/paste-ready):

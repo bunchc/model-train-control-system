@@ -81,10 +81,10 @@ edge-controllers/pi-template/*.log
 edge-controllers/pi-template/*.db
 edge-controllers/pi-template/__pycache__/
 
-# Ignore central-api runtime files
-central-api/app/__pycache__/
-central-api/app/*.db
-central-api/app/*.log
+# Ignore central_api runtime files
+central_api/app/__pycache__/
+central_api/app/*.db
+central_api/app/*.log
 
 # Ignore gateway runtime files
 gateway/orchestrator/node_modules/

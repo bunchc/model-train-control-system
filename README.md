@@ -8,7 +8,7 @@ This project is a distributed control system for model trains, designed to provi
   - **pi-template**: A template for creating Raspberry Pi applications.
   - **examples**: Example configuration files for the Raspberry Pi controllers.
 
-- **central-api**: The central API that coordinates commands and telemetry data between the frontend and the edge controllers.
+- **central_api**: The central API that coordinates commands and telemetry data between the frontend and the edge controllers.
 
 - **gateway**: Acts as a bridge between the frontend and the central API, handling command processing and MQTT communication.
 
@@ -45,7 +45,7 @@ This project is a distributed control system for model trains, designed to provi
    - Navigate to `edge-controllers/pi-template` and follow the instructions in the README.md file.
 
 3. Set up the central API:
-   - Navigate to `central-api` and follow the instructions in the README.md file.
+   - Navigate to `central_api` and follow the instructions in the README.md file.
 
 4. Set up the gateway:
    - Navigate to `gateway/orchestrator` and follow the instructions in the README.md file.

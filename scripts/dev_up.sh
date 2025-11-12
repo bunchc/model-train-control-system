@@ -67,8 +67,8 @@ if ! wait_tcp "localhost" 1883 60; then failed=1; fi
 if [ $failed -ne 0 ]; then
   echo "One or more services failed to become healthy. Showing compose ps and recent logs:"
   docker compose ps
-  echo "---- recent logs (central-api, gateway, mqtt, edge-controller) ----"
-  docker compose logs --no-color --tail 200 central-api gateway mqtt edge-controller || true
+  echo "---- recent logs (central_api, gateway, mqtt, edge-controller) ----"
+  docker compose logs --no-color --tail 200 central_api gateway mqtt edge-controller || true
   exit 1
 fi
 

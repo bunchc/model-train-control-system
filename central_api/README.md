@@ -33,7 +33,7 @@ The central API is built using FastAPI and provides a RESTful interface for cont
 1. Clone the repository:
    ```
    git clone <repository-url>
-   cd model-train-control-system/central-api
+  cd model-train-control-system/central_api
    ```
 
 2. Install the required dependencies:
@@ -52,8 +52,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 To build and run the Docker container, use the following commands:
 ```
-docker build -t central-api .
-docker run -p 8000:8000 central-api
+docker build -t central_api .
+docker run -p 8000:8000 central_api
 ```
 
 ### API Endpoints

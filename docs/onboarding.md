@@ -18,7 +18,7 @@ Familiarize yourself with the project structure:
 ```
 model-train-control-system/
 ├── edge-controllers/          # Raspberry Pi controllers for trains
-├── central-api/               # Central API for managing train commands
+├── central_api/               # Central API for managing train commands
 ├── gateway/                   # Gateway for communication between frontend and backend
 ├── frontend/                  # Frontend web application
 ├── infra/                     # Infrastructure as code (Docker, Kubernetes, Terraform)
@@ -45,7 +45,7 @@ model-train-control-system/
 
 3. **Set Up Central API**
 
-   Go to the `central-api` directory and refer to the `README.md` for instructions on setting up the central API.
+   Go to the `central_api` directory and refer to the `README.md` for instructions on setting up the central API.
 
 4. **Set Up Gateway**
 

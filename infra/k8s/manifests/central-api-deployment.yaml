@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: central-api
+  name: central_api
   labels:
-    app: central-api
+  app: central_api
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: central-api
+  app: central_api
   template:
     metadata:
       labels:
-        app: central-api
+  app: central_api
     spec:
       containers:
-      - name: central-api
-        image: central-api:latest
+  - name: central_api
+  image: central_api:latest
         ports:
         - containerPort: 8000
         env:

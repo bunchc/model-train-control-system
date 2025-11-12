@@ -10,9 +10,9 @@ docker run -d --name train-controller model-train-controller
 
 # Deploy the central API
 echo "Deploying central API..."
-cd ../../central-api
-docker build -t central-api .
-docker run -d --name central-api -p 8000:8000 central-api
+cd ../../central_api
+docker build -t central_api .
+docker run -d --name central_api -p 8000:8000 central_api
 
 # Deploy the gateway
 echo "Deploying gateway..."
