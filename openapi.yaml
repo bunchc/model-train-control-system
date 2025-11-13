@@ -1,0 +1,390 @@
+openapi: 3.1.0
+info:
+  title: Model Train Layout API
+  description: API for managing a model train layout.
+  version: 0.1.0
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+paths:
+  /api/trains:
+    get:
+      summary: List Trains
+      description: Returns a list of trains with pagination.
+      operationId: list_trains
+      tags:
+        - trains
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of items to return
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of items to skip for pagination
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Train'
+                  meta:
+                    type: object
+                    properties:
+                      page:
+                        type: object
+                        properties:
+                          offset:
+                            type: integer
+                            description: The page offset
+                          limit:
+                            type: integer
+                            description: The page limit
+                          total:
+                            type: integer
+                            description: The total number of items available
+                          estimated_total:
+                            type: boolean
+                            description: If the total is estimated or a hard count
+                            default: true
+                title: Response List Trains Api Trains  Get
+  /api/trains/{train_id}/command:
+    post:
+      summary: Send Command
+      description: Sends a command to a specific train.
+      operationId: send_command
+      tags:
+        - trains
+      parameters:
+        - name: train_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Train Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainCommand'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/trains/{train_id}/status:
+    get:
+      summary: Get Status
+      description: Gets the status of a specific train.
+      operationId: get_status
+      tags:
+        - trains
+      parameters:
+        - name: train_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Train Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /:
+    get:
+      summary: Read Root
+      description: Returns a basic greeting.
+      operationId: read_root
+      tags:
+        - root
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/plugins:
+    get:
+      summary: List Available Plugins
+      description: Returns a list of available plugins.
+      operationId: list_plugins
+      tags:
+        - config
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+  /api/config:
+    get:
+      summary: Get the entire configuration
+      description: Returns the entire configuration of the central API.
+      operationId: get_full_config
+      tags:
+        - config
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FullConfig'
+  /api/config/trains:
+    get:
+      summary: List all configured trains
+      description: Returns a list of all configured trains.
+      operationId: list_trains_config
+      tags:
+        - config
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrainConfig'
+  /api/config/trains/{train_id}:
+    get:
+      summary: Get configuration for a specific train
+      description: Returns the configuration for a specific train.
+      operationId: get_train_config
+      tags:
+        - config
+      parameters:
+        - name: train_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Train Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainConfig'
+        '404':
+          description: Train not found
+  /api/edge-controllers:
+    get:
+      summary: List all edge controllers
+      description: Returns a list of all edge controllers.
+      operationId: list_edge_controllers
+      tags:
+        - config
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EdgeControllerConfig'
+  /api/config/edge-controllers/{edge_controller_id}:
+    get:
+      summary: Get configuration for a specific edge controller
+      description: Returns the configuration for a specific edge controller.
+      operationId: get_edge_controller_config
+      tags:
+        - config
+      parameters:
+        - name: edge_controller_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Edge Controller Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EdgeControllerConfig'
+        '404':
+          description: Edge controller not found
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    Train:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        status:
+          $ref: '#/components/schemas/TrainStatus'
+        commands:
+          $ref: '#/components/schemas/TrainCommand'
+      type: object
+      required:
+        - id
+        - name
+        - status
+        - commands
+      title: Train
+    TrainCommand:
+      properties:
+        speed:
+          anyOf:
+            - type: integer
+            - type: "null"
+          title: Speed
+        direction:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Direction
+        action:
+          anyOf:
+            - type: string
+            - type: "null"
+          title: Action
+      type: object
+      title: TrainCommand
+    TrainStatus:
+      properties:
+        train_id:
+          type: string
+          title: Train Id
+        speed:
+          type: integer
+          title: Speed
+        voltage:
+          type: number
+          title: Voltage
+        current:
+          type: number
+          title: Current
+        position:
+          type: string
+          title: Position
+      type: object
+      required:
+        - train_id
+        - speed
+        - voltage
+        - current
+        - position
+      title: TrainStatus
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
+    TrainConfig:
+      type: object
+      properties:
+        train_id:
+          type: string
+          description: Unique identifier for the train
+        plugin:
+          type: string
+          description: Name of the plugin used for this train
+        plugin_config:
+          type: object
+          description: Plugin-specific configuration (e.g., pin numbers)
+        min_speed:
+          type: integer
+          description: Minimum speed of the train
+        max_speed:
+          type: integer
+          description: Maximum speed of the train
+      required:
+        - train_id
+        - plugin
+    FullConfig:
+      type: object
+      properties:
+        mqtt_server:
+          type: string
+          description: Location of the MQTT server
+        trains:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainConfig'
+    EdgeControllerConfig:
+      type: object
+      properties:
+        edge_controller_id:
+          type: string
+          description: Unique identifier for the edge controller
+        location:
+          type: string
+          description: Physical location of the edge controller
+        status:
+          type: string
+          description: Current status of the edge controller (e.g., online, offline)
+tags:
+  - name: trains
+    description: Operations related to train management
+  - name: config
+    description: Operations related to central API configuration
+  - name: root
+    description: Basic API information
