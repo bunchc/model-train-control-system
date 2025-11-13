@@ -1,11 +1,11 @@
-train_id: "train_1"
+train_id: "1"
 mqtt_broker:
-  host: "mqtt.example.com"
+  host: "192.168.1.199"
   port: 1883
   username: "user"
   password: "password"
-commands_topic: "trains/train_1/commands"
-status_topic: "trains/train_1/status"
+commands_topic: "trains/1/commands"
+status_topic: "trains/1/status"
 hardware:
   motor_pins:
     - forward: 17
