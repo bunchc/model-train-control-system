@@ -3,3 +3,4 @@ uvicorn
 paho-mqtt
 pydantic
 httpx
+pyyaml

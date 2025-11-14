@@ -1,0 +1,35 @@
+
+
+-- Table for plugins
+CREATE TABLE IF NOT EXISTS plugins (
+    name TEXT PRIMARY KEY,
+    description TEXT,
+    config TEXT -- JSON string
+);
+
+-- Table for edge controllers
+CREATE TABLE IF NOT EXISTS edge_controllers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    address TEXT,
+    enabled BOOLEAN NOT NULL
+);
+
+-- Table for trains (referenced by edge_controller)
+CREATE TABLE IF NOT EXISTS trains (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    model TEXT,
+    plugin_name TEXT NOT NULL,
+    plugin_config TEXT,
+    edge_controller_id TEXT NOT NULL,
+    FOREIGN KEY(edge_controller_id) REFERENCES edge_controllers(id)
+);
+
+-- Table for config metadata
+CREATE TABLE IF NOT EXISTS config_metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
