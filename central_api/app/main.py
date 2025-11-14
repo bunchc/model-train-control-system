@@ -1,6 +1,14 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import trains, config
+
+# Ensure config.yaml is present and loaded before app starts
+CONFIG_PATH = os.getenv("CENTRAL_API_CONFIG_YAML", "/app/config.yaml")
+if not os.path.exists(CONFIG_PATH):
+    raise RuntimeError(f"Config file not found at {CONFIG_PATH}. Please mount config.yaml.")
+else:
+    print(f"[Startup] Found config.yaml at {CONFIG_PATH}")
 
 app = FastAPI()
 
@@ -13,9 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # Include routers
-
 app.include_router(config.router, prefix="/api")
 
 @app.get("/")

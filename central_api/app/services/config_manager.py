@@ -1,8 +1,9 @@
 import os
 import sqlite3
 import yaml
-from datetime import datetime
-from typing import List, Dict, Any
+import logging
+import uuid
+from typing import List
 try:
     from central_api.app.models.schemas import Plugin, EdgeController, Train, FullConfig
 except ModuleNotFoundError:
@@ -13,50 +14,110 @@ YAML_PATH = os.getenv("CENTRAL_API_CONFIG_YAML", "config.yaml")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "config_schema.sql")
 
 class ConfigManager:
+    def get_plugins(self):
+        """Return a list of Plugin objects from the plugins table."""
+        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        cur = conn.cursor()
+        cur.execute("SELECT name, description, config FROM plugins")
+        rows = cur.fetchall()
+        plugins = []
+        for name, description, config_json in rows:
+            import json
+            config = json.loads(config_json) if config_json else {}
+            plugins.append(Plugin(name=name, description=description, config=config))
+        conn.close()
+        return plugins
     def __init__(self, db_path=DB_PATH, yaml_path=YAML_PATH):
         self.db_path = db_path
         self.yaml_path = yaml_path
         self.conn = None
+        self.logger = logging.getLogger("central_api.config_manager")
+        self.logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('[%(asctime)s] %(levelname)s %(name)s: %(message)s')
+        handler.setFormatter(formatter)
+        if not self.logger.hasHandlers():
+            self.logger.addHandler(handler)
+        self.logger.info(f"Initializing ConfigManager with db_path={db_path}, yaml_path={yaml_path}")
         self._ensure_db()
 
     def _ensure_db(self):
         db_exists = os.path.exists(self.db_path)
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         with open(SCHEMA_PATH, "r") as f:
             schema_sql = f.read()
         self.conn.executescript(schema_sql)
         self.conn.commit()
+        self.logger.info("Database schema ensured.")
         if not db_exists:
+            self.logger.info("Database did not exist, bootstrapping from YAML.")
             self._bootstrap_from_yaml()
         else:
-            if not self._has_last_updated():
+            if not self.get_last_updated():
+                self.logger.info("No last_updated found in DB, bootstrapping from YAML.")
                 self._bootstrap_from_yaml()
+    def set_last_updated(self):
+        import time
+        epoch_time = int(time.time())
+        try:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO config_metadata (key, value) VALUES (?, ?)",
+                ("last_updated", str(epoch_time))
+            )
+            self.conn.commit()
+            self.logger.info(f"Set last_updated in config_metadata to {epoch_time}")
+        except Exception as e:
+            self.logger.error(f"Failed to set last_updated in config_metadata: {e}")
 
-    def _has_last_updated(self):
+
+
+
+    def get_trains(self) -> List[Train]:
         cur = self.conn.cursor()
-        cur.execute("SELECT value FROM config_metadata WHERE key='last_updated'")
-        return cur.fetchone() is not None
+        cur.execute("SELECT id, name, description, model, plugin_name, plugin_config FROM trains")
+        train_rows = cur.fetchall()
+        trains = [Train(
+            id=tr[0],
+            name=tr[1],
+            description=tr[2],
+            model=tr[3],
+            plugin={
+                "name": tr[4],
+                "config": yaml.safe_load(tr[5]) if tr[5] else {}
+            }
+        ) for tr in train_rows]
+        return trains
+
+    def get_train(self, train_id: str) -> Train:
+        cur = self.conn.cursor()
+        cur.execute("SELECT id, name, description, model, plugin_name, plugin_config FROM trains WHERE id=?", (train_id,))
+        tr = cur.fetchone()
+        if not tr:
+            return None
+        return Train(
+            id=tr[0],
+            name=tr[1],
+            description=tr[2],
+            model=tr[3],
+            plugin={
+                "name": tr[4],
+                "config": yaml.safe_load(tr[5]) if tr[5] else {}
+            }
+        )
 
     def _bootstrap_from_yaml(self):
-        import uuid
-        import sys
-        import sqlite3
-        import json
-        print(f"[BOOTSTRAP] Python version: {sys.version}")
-        print(f"[BOOTSTRAP] SQLite version: {sqlite3.sqlite_version}")
-        print(f"[BOOTSTRAP] Using YAML path: {self.yaml_path}")
+        # import uuid (already imported at top)
         if not os.path.exists(self.yaml_path):
-            print(f"[BOOTSTRAP] YAML file not found: {self.yaml_path}")
-            # No YAML, just leave DB empty
+            self.logger.warning(f"YAML file not found: {self.yaml_path}. DB will be empty.")
             return
-        print(f"[BOOTSTRAP] YAML file found, loading...")
+        self.logger.info("YAML file found, loading...")
         with open(self.yaml_path, "r") as f:
             config = yaml.safe_load(f)
-        print(f"[BOOTSTRAP] Loaded config: {json.dumps(config)[:500]}{'...' if len(json.dumps(config)) > 500 else ''}")
-        # Populate plugins
-        print(f"[BOOTSTRAP] Populating plugins...")
+        import json
+        self.logger.debug(f"Loaded config: {json.dumps(config)[:500]}{'...' if len(json.dumps(config)) > 500 else ''}")
+        self.logger.info("Populating plugins...")
         for plugin in config.get("plugins", []):
-            print(f"[BOOTSTRAP] Plugin: {plugin.get('name')} | Description: {plugin.get('description', '')}")
+            self.logger.info(f"Plugin: {plugin.get('name')} | Description: {plugin.get('description', '')}")
             try:
                 self.conn.execute(
                     "INSERT OR REPLACE INTO plugins (name, description, config) VALUES (?, ?, ?)",
@@ -66,13 +127,12 @@ class ConfigManager:
                         json.dumps(plugin.get("config", {}))
                     )
                 )
-                print(f"[BOOTSTRAP] Plugin '{plugin.get('name')}' inserted successfully.")
+                self.set_last_updated()
+                self.logger.info(f"Plugin '{plugin.get('name')}' inserted successfully.")
             except Exception as e:
-                print(f"[BOOTSTRAP] Plugin '{plugin.get('name')}' insert FAILED: {e}")
-        print(f"[BOOTSTRAP] Populating edge controllers and trains...")
-        # Populate edge controllers and trains
+                self.logger.error(f"Plugin '{plugin.get('name')}' insert FAILED: {e}")
+        self.logger.info("Populating edge controllers and trains...")
         for ec in config.get("edge_controllers", []):
-            # Validate and assign UUID for id
             raw_id = ec.get("id")
             id_str = str(raw_id) if raw_id is not None else ""
             import re
@@ -84,7 +144,7 @@ class ConfigManager:
                 needs_uuid = True
             if needs_uuid:
                 new_uuid = str(uuid.uuid4())
-                print(f"[BOOTSTRAP] Edge controller '{ec.get('name')}' id '{id_str}' is not a valid UUID, assigning new UUID: {new_uuid}")
+                self.logger.info(f"Edge controller '{ec.get('name')}' id '{id_str}' is not a valid UUID, assigning new UUID: {new_uuid}")
                 ec_id = new_uuid
             else:
                 ec_id = id_str
@@ -94,7 +154,7 @@ class ConfigManager:
             if address is not None:
                 address = str(address)
             enabled = bool(ec.get("enabled", True))
-            print(f"[DEBUG] About to insert edge_controller with id: {ec_id}")
+            self.logger.debug(f"About to insert edge_controller with id: {ec_id}")
             try:
                 self.conn.execute(
                     "INSERT OR REPLACE INTO edge_controllers (id, name, description, address, enabled) VALUES (?, ?, ?, ?, ?)",
@@ -106,9 +166,10 @@ class ConfigManager:
                         enabled
                     )
                 )
-                print(f"[BOOTSTRAP] Edge controller '{name}' inserted with id: {ec_id}")
+                self.set_last_updated()
+                self.logger.info(f"Edge controller '{name}' inserted with id: {ec_id}")
             except Exception as e:
-                print(f"[ERROR] Failed to insert edge_controller '{name}' with id '{ec_id}': {e}")
+                self.logger.error(f"Failed to insert edge_controller '{name}' with id '{ec_id}': {e}")
                 raise
             for train in ec.get("trains", []):
                 plugin = train.get("plugin", {})
@@ -120,7 +181,6 @@ class ConfigManager:
                     if isinstance(val, (dict, list)):
                         return json.dumps(val)
                     return str(val)
-                # Validate and assign UUID for train id
                 raw_id = train.get("id")
                 id_str = str(raw_id) if raw_id is not None else ""
                 uuid_regex = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -131,7 +191,7 @@ class ConfigManager:
                     needs_uuid = True
                 if needs_uuid:
                     new_uuid = str(uuid.uuid4())
-                    print(f"[BOOTSTRAP] Train '{train.get('name')}' id '{id_str}' is not a valid UUID, assigning new UUID: {new_uuid}")
+                    self.logger.info(f"Train '{train.get('name')}' id '{id_str}' is not a valid UUID, assigning new UUID: {new_uuid}")
                     train_id = new_uuid
                 else:
                     train_id = id_str
@@ -141,14 +201,7 @@ class ConfigManager:
                 plugin_name = safe_str(plugin.get("name", None))
                 plugin_config = safe_str(json.dumps(plugin.get("config", {})))
                 edge_controller_id = safe_str(ec_id)
-                print("[DEBUG] Inserting train:")
-                print(f"  id: {train_id} ({type(train_id)})")
-                print(f"  name: {train_name} ({type(train_name)})")
-                print(f"  description: {train_desc} ({type(train_desc)})")
-                print(f"  model: {train_model} ({type(train_model)})")
-                print(f"  plugin_name: {plugin_name} ({type(plugin_name)})")
-                print(f"  plugin_config: {plugin_config} ({type(plugin_config)})")
-                print(f"  edge_controller_id: {edge_controller_id} ({type(edge_controller_id)})")
+                self.logger.debug(f"Inserting train: id={train_id}, name={train_name}, description={train_desc}, model={train_model}, plugin_name={plugin_name}, plugin_config={plugin_config}, edge_controller_id={edge_controller_id}")
                 try:
                     self.conn.execute(
                         "INSERT OR REPLACE INTO trains (id, name, description, model, plugin_name, plugin_config, edge_controller_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -162,9 +215,10 @@ class ConfigManager:
                             edge_controller_id
                         )
                     )
-                    print(f"[BOOTSTRAP] Train '{train_name}' inserted with id: {train_id}")
+                    self.set_last_updated()
+                    self.logger.info(f"Train '{train_name}' inserted with id: {train_id}")
                 except Exception as e:
-                    print(f"[ERROR] Failed to insert train '{train_name}' with id '{train_id}': {e}")
+                    self.logger.error(f"Failed to insert train '{train_name}' with id '{train_id}': {e}")
                     raise
         # ...existing code...
 
@@ -226,7 +280,7 @@ class ConfigManager:
     def get_full_config(self) -> FullConfig:
         return FullConfig(
             plugins=self.get_plugins(),
-            edge_controllers=self.get_edge_controllers()
+            edge_controllers=[ec.dict() for ec in self.get_edge_controllers()]
         )
 
     def get_last_updated(self) -> str:

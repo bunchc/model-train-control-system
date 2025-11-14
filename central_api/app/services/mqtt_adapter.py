@@ -1,5 +1,14 @@
 from paho.mqtt import client as mqtt
 import json
+import logging
+
+logger = logging.getLogger("central_api.mqtt_adapter")
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('[%(asctime)s] %(levelname)s %(name)s: %(message)s')
+handler.setFormatter(formatter)
+if not logger.hasHandlers():
+    logger.addHandler(handler)
 
 class MQTTAdapter:
     def __init__(self, broker_address, train_id):
@@ -9,41 +18,46 @@ class MQTTAdapter:
 
     def connect(self):
         self.client.connect(self.broker_address)
+        logger.info(f"Connected to MQTT broker at {self.broker_address}")
 
     def subscribe(self, topic, on_message):
         self.client.subscribe(topic)
         self.client.on_message = on_message
+        logger.info(f"Subscribed to topic {topic}")
 
     def publish(self, topic, payload):
         self.client.publish(topic, payload)
+        logger.info(f"Published to topic {topic}: {payload}")
 
     def loop_start(self):
         self.client.loop_start()
+        logger.debug("MQTT loop started")
 
     def loop_stop(self):
         self.client.loop_stop()
+        logger.debug("MQTT loop stopped")
 
 # Example publish_command and get_train_status functions
 def publish_command(train_id, command):
-    # This is a stub. Replace with real MQTT publish logic as needed.
     try:
         adapter = MQTTAdapter(broker_address="mqtt", train_id=train_id)
         adapter.connect()
         topic = f"trains/{train_id}/commands"
-        # Serialize command to JSON for compatibility
         if hasattr(command, 'dict'):
             payload = json.dumps(command.dict())
         else:
             payload = json.dumps(command)
         adapter.publish(topic, payload)
+        logger.info(f"Command published for train {train_id}")
         return True
     except Exception as e:
-        print(f"MQTT publish error: {e}")
+        logger.error(f"MQTT publish error: {e}")
         return False
 
 def get_train_status(train_id, local_testing=True):
     from models.schemas import TrainStatus
     if local_testing:
+        logger.info(f"Returning mock status for train {train_id}")
         return TrainStatus(
             train_id=train_id,
             speed=50,
@@ -52,15 +66,15 @@ def get_train_status(train_id, local_testing=True):
             position="section_A"
         )
     else:
-        # Fetch real status from MQTT
         status_topic = f"trains/{train_id}/status"
         result = {}
         def on_message(client, userdata, msg):
             try:
                 payload = json.loads(msg.payload.decode())
                 result.update(payload)
+                logger.debug(f"Received status message: {payload}")
             except Exception as e:
-                print(f"Error decoding MQTT status: {e}")
+                logger.error(f"Error decoding MQTT status: {e}")
         adapter = MQTTAdapter(broker_address="mqtt", train_id=train_id)
         adapter.connect()
         adapter.client.on_message = on_message
@@ -73,6 +87,8 @@ def get_train_status(train_id, local_testing=True):
             time.sleep(0.1)
         adapter.client.loop_stop()
         if result:
+            logger.info(f"Returning real status for train {train_id}")
             return TrainStatus(**result)
         else:
+            logger.warning(f"No status received for train {train_id}")
             return None
