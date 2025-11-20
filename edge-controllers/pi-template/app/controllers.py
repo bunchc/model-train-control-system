@@ -1,27 +1,35 @@
+import logging
+
 from fastapi import APIRouter
 from pydantic import BaseModel
-import logging
-from context import TRAIN_ID, STATUS_TOPIC, COMMANDS_TOPIC
+
+from context import TRAIN_ID
+
 
 router = APIRouter()
+
 
 class Command(BaseModel):
     speed: int = None
     action: str = None
+
 
 train_status = {
     "train_id": TRAIN_ID,
     "speed": 0,
     "voltage": 12.0,
     "current": 0.0,
-    "position": "unknown"
+    "position": "unknown",
 }
 
 mqtt_client = None  # Will be set in main.py
 
+
 @router.post("/command")
 async def handle_command(command: Command):
-    logging.info(f"[DIAG] POST /command called with: action={command.action}, speed={command.speed}")
+    logging.info(
+        f"[DIAG] POST /command called with: action={command.action}, speed={command.speed}"
+    )
     try:
         if mqtt_client is None:
             logging.error("MQTT client not initialized in controller.")
@@ -30,34 +38,40 @@ async def handle_command(command: Command):
             logging.info("Train start requested.")
             train_status["speed"] = train_status.get("speed", 0)
             train_status["position"] = "started"
-            logging.info(f"[DIAG] About to publish train status to topic: {mqtt_client.status_topic} with payload: {train_status}")
+            logging.info(
+                f"[DIAG] About to publish train status to topic: {mqtt_client.status_topic} with payload: {train_status}"
+            )
             logging.debug(f"Command handler: train_status before publish: {train_status}")
             mqtt_client.publish_status(train_status)
-            logging.info(f"[DIAG] Publish status call completed.")
+            logging.info("[DIAG] Publish status call completed.")
             return {"status": "Train started"}
-        elif command.action == "stop":
+        if command.action == "stop":
             logging.info("Train stop requested.")
             train_status["speed"] = 0
             train_status["position"] = "stopped"
-            logging.info(f"[DIAG] About to publish train status to topic: {mqtt_client.status_topic} with payload: {train_status}")
+            logging.info(
+                f"[DIAG] About to publish train status to topic: {mqtt_client.status_topic} with payload: {train_status}"
+            )
             logging.debug(f"Command handler: train_status before publish: {train_status}")
             mqtt_client.publish_status(train_status)
-            logging.info(f"[DIAG] Publish status call completed.")
+            logging.info("[DIAG] Publish status call completed.")
             return {"status": "Train stopped"}
-        elif command.speed is not None:
+        if command.speed is not None:
             logging.info(f"Train speed set requested: {command.speed}")
             train_status["speed"] = command.speed
-            logging.info(f"[DIAG] About to publish train status to topic: {mqtt_client.status_topic} with payload: {train_status}")
+            logging.info(
+                f"[DIAG] About to publish train status to topic: {mqtt_client.status_topic} with payload: {train_status}"
+            )
             logging.debug(f"Command handler: train_status before publish: {train_status}")
             mqtt_client.publish_status(train_status)
-            logging.info(f"[DIAG] Publish status call completed.")
+            logging.info("[DIAG] Publish status call completed.")
             return {"status": f"Train speed set to {command.speed}"}
-        else:
-            logging.warning("Invalid command received.")
-            return {"error": "Invalid command"}
+        logging.warning("Invalid command received.")
+        return {"error": "Invalid command"}
     except Exception as e:
-        logging.error(f"[DIAG] Exception in handle_command: {e}")
+        logging.exception(f"[DIAG] Exception in handle_command: {e}")
         return {"error": str(e)}
+
 
 @router.get("/status")
 async def get_status():

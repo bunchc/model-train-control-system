@@ -1,116 +1,243 @@
-import paho.mqtt.client as mqtt
+"""MQTT client for edge controller communication."""
+
 import json
 import logging
+from typing import Any, Callable
+
+import paho.mqtt.client as mqtt
+import requests
+from requests.exceptions import RequestException, Timeout
+
+
+logger = logging.getLogger(__name__)
+
+
+class MQTTClientError(Exception):
+    """Base exception for MQTT client errors."""
+
+
+class MQTTConnectionError(MQTTClientError):
+    """Raised when MQTT connection fails."""
+
+
+class MQTTPublishError(MQTTClientError):
+    """Raised when MQTT publish fails."""
+
 
 class MQTTClient:
-    def __init__(self, broker_address, train_id, status_topic=None, commands_topic=None, stepper_controller=None):
-        self.broker_address = broker_address
+    """MQTT client for train control communication."""
+
+    def __init__(
+        self,
+        broker_host: str,
+        broker_port: int,
+        train_id: str,
+        status_topic: str,
+        commands_topic: str,
+        command_handler: Callable[[dict[str, Any]], None],
+        username: str | None = None,
+        password: str | None = None,
+        central_api_url: str | None = None,
+    ) -> None:
+        """Initialize MQTT client.
+
+        Args:
+            broker_host: MQTT broker hostname
+            broker_port: MQTT broker port
+            train_id: Train identifier
+            status_topic: Topic for publishing status updates
+            commands_topic: Topic for receiving commands
+            command_handler: Callback function for handling commands
+            username: Optional MQTT username
+            password: Optional MQTT password
+            central_api_url: Optional URL for HTTP status fallback
+        """
+        self.broker_host = broker_host
+        self.broker_port = broker_port
         self.train_id = train_id
-        self.status_topic = status_topic or f"trains/{train_id}/status"
-        self.commands_topic = commands_topic or f"trains/{train_id}/commands"
+        self.status_topic = status_topic
+        self.commands_topic = commands_topic
+        self.command_handler = command_handler
+        self.central_api_url = central_api_url
+
+        # Initialize MQTT client
         self.client = mqtt.Client()
-        self.setup_logging()
-        self.client.on_connect = self.on_connect
-        self.client.on_disconnect = self.on_disconnect
-        self.client.on_message = self.on_message
-        self.stepper_controller = stepper_controller
 
-    def setup_logging(self):
-        logging.basicConfig(level=logging.DEBUG)
+        if username and password:
+            self.client.username_pw_set(username, password)
 
-    def on_connect(self, client, userdata, flags, rc):
-        if rc == 0:
-            logging.info(f"Successfully connected to MQTT broker {self.broker_address} (rc={rc})")
+        # Set callbacks
+        self.client.on_connect = self._on_connect
+        self.client.on_message = self._on_message
+        self.client.on_disconnect = self._on_disconnect
+
+    def _on_connect(
+        self,
+        client: mqtt.Client,
+        userdata: Any,
+        flags: dict[str, int],
+        return_code: int,
+    ) -> None:
+        """Callback for when client connects to broker.
+
+        Args:
+            client: MQTT client instance
+            userdata: User data
+            flags: Connection flags
+            return_code: Connection result code
+        """
+        if return_code == 0:
+            logger.info(f"Connected to MQTT broker at {self.broker_host}:{self.broker_port}")
+
+            try:
+                result = client.subscribe(self.commands_topic)
+                if result[0] == mqtt.MQTT_ERR_SUCCESS:
+                    logger.info(f"Subscribed to topic: {self.commands_topic}")
+                else:
+                    logger.error(f"Failed to subscribe to {self.commands_topic}: {result}")
+            except Exception as exc:
+                logger.error(f"Exception during subscription: {exc}")
         else:
-            logging.error(f"Failed to connect to MQTT broker {self.broker_address} (rc={rc})")
-        result, mid = client.subscribe(self.commands_topic)
-        if result == mqtt.MQTT_ERR_SUCCESS:
-            logging.info(f"Subscribed to topic: {self.commands_topic}")
-        else:
-            logging.error(f"Failed to subscribe to topic: {self.commands_topic} (result={result})")
-    def on_disconnect(self, client, userdata, rc):
-        if rc == 0:
-            logging.info(f"Disconnected cleanly from MQTT broker {self.broker_address}")
-        else:
-            logging.warning(f"Unexpected disconnect from MQTT broker {self.broker_address} (rc={rc})")
-
-    def on_message(self, client, userdata, message):
-        payload = message.payload.decode()
-        logging.info(f"MQTT message received on topic '{message.topic}': {payload}")
-        try:
-            command = json.loads(payload)
-            self.handle_command(command)
-        except json.JSONDecodeError as e:
-            logging.error(f"Error decoding MQTT message as JSON: {e}. Raw payload: {payload}")
-        except Exception as e:
-            logging.error(f"Unexpected error processing MQTT message: {e}. Raw payload: {payload}")
-
-    def handle_command(self, command):
-        logging.info(f"Edge controller received command: {command}")
-        try:
-            stepper = self.stepper_controller
-            status = {
-                "train_id": self.train_id,
-                "speed": None,
-                "voltage": 12.0,
-                "current": 0.0,
-                "position": "unknown"
+            error_messages = {
+                1: "Connection refused - incorrect protocol version",
+                2: "Connection refused - invalid client identifier",
+                3: "Connection refused - server unavailable",
+                4: "Connection refused - bad username or password",
+                5: "Connection refused - not authorized",
             }
-            if command.get('action') == 'start':
-                speed = command.get('speed', 50)
-                logging.info(f"Starting train 1 (M1) at speed {speed}")
-                stepper.start(speed)
-                status["speed"] = speed
-                status["position"] = "started"
-                self.publish_status(status)
-            elif command.get('action') == 'stop':
-                logging.info("Stopping train 1 (M1)")
-                stepper.stop()
-                status["speed"] = 0
-                status["position"] = "stopped"
-                self.publish_status(status)
-            elif command.get('action') == 'setSpeed' and 'speed' in command:
-                speed = command['speed']
-                logging.info(f"Setting train 1 (M1) speed to {speed}")
-                stepper.set_speed(speed)
-                status["speed"] = speed
-                status["position"] = "speed_set"
-                self.publish_status(status)
-            else:
-                logging.warning(f"Unknown or invalid command: {command}")
-        except Exception as e:
-            logging.error(f"Exception in handle_command: {e}")
+            error_msg = error_messages.get(return_code, f"Unknown error code: {return_code}")
+            logger.error(f"MQTT connection failed: {error_msg}")
 
-    def publish_status(self, status):
-        logging.debug(f"publish_status called. Client connected: {self.client.is_connected()}, topic: {self.status_topic}, payload: {status}")
-        # Publish to MQTT as before
-        try:
-            result = self.client.publish(self.status_topic, json.dumps(status))
-            logging.debug(f"Publish result object: {result}")
-            if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                logging.info(f"Published status to {self.status_topic}: {status}")
-            else:
-                logging.error(f"Failed to publish status to {self.status_topic}: {status} (result={result.rc})")
-        except Exception as e:
-            logging.error(f"Exception during publish_status: {e}")
+    def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
+        """Callback for when message is received.
 
-        # Also push status to central API /status/update
+        Args:
+            client: MQTT client instance
+            userdata: User data
+            msg: Received message
+        """
         try:
-            import requests
-            api_url = "http://central_api:8000/api/status/update"  # Use docker compose service name or localhost if running locally
-            resp = requests.post(api_url, json=status, timeout=2)
-            if resp.status_code == 200:
-                logging.info(f"Pushed status to central API: {status}")
-            else:
-                logging.error(f"Failed to push status to central API: {resp.status_code} {resp.text}")
-        except Exception as e:
-            logging.error(f"Exception during HTTP push to central API: {e}")
+            payload = msg.payload.decode("utf-8")
+            logger.info(f"Received message on {msg.topic}: {payload}")
 
-    def start(self):
+            command = json.loads(payload)
+
+            if not isinstance(command, dict):
+                logger.error("Command payload is not a JSON object")
+                return
+
+            self.command_handler(command)
+
+        except json.JSONDecodeError as exc:
+            logger.error(f"Failed to parse command JSON: {exc}")
+        except Exception as exc:
+            logger.error(f"Error handling command: {exc}")
+
+    def _on_disconnect(self, client: mqtt.Client, userdata: Any, return_code: int) -> None:
+        """Callback for when client disconnects from broker.
+
+        Args:
+            client: MQTT client instance
+            userdata: User data
+            return_code: Disconnection result code
+        """
+        if return_code != 0:
+            logger.warning(f"Unexpected MQTT disconnection (code: {return_code})")
+        else:
+            logger.info("Disconnected from MQTT broker")
+
+    def start(self) -> None:
+        """Start the MQTT client and connect to broker.
+
+        Raises:
+            MQTTConnectionError: If connection fails
+        """
         try:
-            logging.info(f"Connecting to MQTT broker at {self.broker_address}...")
-            self.client.connect(self.broker_address)
+            logger.info(f"Connecting to MQTT broker at {self.broker_host}:{self.broker_port}")
+            self.client.connect(self.broker_host, self.broker_port, keepalive=60)
             self.client.loop_start()
-            logging.info("MQTT client network loop started.")
-        except Exception as e:
-            logging.error(f"Exception during MQTT client start: {e}")
+            logger.info("MQTT client loop started")
+
+        except ConnectionRefusedError as exc:
+            raise MQTTConnectionError(f"Connection refused: {exc}") from exc
+        except OSError as exc:
+            raise MQTTConnectionError(f"Network error: {exc}") from exc
+        except Exception as exc:
+            raise MQTTConnectionError(f"Failed to start MQTT client: {exc}") from exc
+
+    def stop(self) -> None:
+        """Stop the MQTT client and disconnect from broker."""
+        try:
+            self.client.loop_stop()
+            self.client.disconnect()
+            logger.info("MQTT client stopped")
+        except Exception as exc:
+            logger.error(f"Error stopping MQTT client: {exc}")
+
+    def publish_status(self, status: dict[str, Any]) -> None:
+        """Publish train status to MQTT and optionally HTTP endpoint.
+
+        Args:
+            status: Status dictionary to publish
+
+        Raises:
+            MQTTPublishError: If publish fails
+        """
+        logger.debug(
+            f"Publishing status - Connected: {self.client.is_connected()}, "
+            f"Topic: {self.status_topic}, Payload: {status}"
+        )
+
+        # Publish to MQTT
+        self._publish_to_mqtt(status)
+
+        # Optionally push to central API HTTP endpoint
+        if self.central_api_url:
+            self._push_to_http(status)
+
+    def _publish_to_mqtt(self, status: dict[str, Any]) -> None:
+        """Publish status to MQTT broker.
+
+        Args:
+            status: Status dictionary to publish
+
+        Raises:
+            MQTTPublishError: If publish fails
+        """
+        try:
+            payload = json.dumps(status)
+            result = self.client.publish(self.status_topic, payload)
+
+            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                logger.info(f"Published status to {self.status_topic}: {status}")
+            else:
+                error_msg = f"Failed to publish to {self.status_topic} (rc={result.rc})"
+                logger.error(error_msg)
+                raise MQTTPublishError(error_msg)
+
+        except TypeError as exc:
+            raise MQTTPublishError(f"Status is not JSON serializable: {exc}") from exc
+        except Exception as exc:
+            raise MQTTPublishError(f"Unexpected error during publish: {exc}") from exc
+
+    def _push_to_http(self, status: dict[str, Any]) -> None:
+        """Push status to central API HTTP endpoint.
+
+        Args:
+            status: Status dictionary to push
+        """
+        try:
+            url = f"{self.central_api_url}/api/status/update"
+            response = requests.post(url, json=status, timeout=2)
+
+            if response.status_code == 200:
+                logger.info(f"Pushed status to central API: {status}")
+            else:
+                logger.error(
+                    f"Failed to push status to central API: {response.status_code} {response.text}"
+                )
+
+        except (RequestException, Timeout) as exc:
+            logger.error(f"Exception during HTTP push to central API: {exc}")
+        except Exception as exc:
+            logger.error(f"Unexpected error during HTTP push: {exc}")

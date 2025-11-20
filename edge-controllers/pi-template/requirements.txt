@@ -1,7 +1,24 @@
+# MQTT Communication
 paho-mqtt==1.6.1
-requests==2.26.0
+
+# HTTP Client
+requests==2.31.0
+
+# Web Framework
 fastapi==0.110.0
-uvicorn==0.29.0
-paho-mqtt==1.6.1
-requests==2.26.0
-pyyaml
+uvicorn[standard]==0.29.0
+
+# GPIO Control (Pi-specific)
+gpiozero==2.0.1
+lgpio==0.2.2.0
+
+# Configuration
+pyyaml==6.0.1
+
+# Code Quality
+ruff==0.3.4
+mypy==1.9.0
+
+# Type Stubs
+types-requests==2.31.0.20240406
+types-pyyaml==6.0.12.20240311

@@ -8,6 +8,13 @@ __pycache__/
 *.egg-info/
 *.sqlite3
 *.db
+
+# Python tooling caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.tox/
+.hypothesis/
 # Node.js
 node_modules/
 *.log
@@ -40,8 +47,11 @@ Thumbs.db
 
 # Coverage
 .coverage
+.coverage.*
 htmlcov/
 coverage.xml
+*.lcov
+cov.xml
 
 # Jupyter
 .ipynb_checkpoints/
@@ -75,6 +85,9 @@ frontend/web/.cache/
 
 # Ignore test output
 *.testoutput
+test-results/
+junit.xml
+.tox/
 
 # Ignore edge-controller runtime files
 edge-controllers/pi-template/*.log
@@ -114,9 +127,7 @@ pnpm-lock.yaml
 # Ignore devcontainer
 .devcontainer/
 
-# Ignore CI/CD artifacts
-*.coverage
-*.lcov
+# Ignore CI/CD artifacts (duplicate removed - now in Coverage section)
 
 # Ignore other temp files
 *.tmp
@@ -140,8 +151,7 @@ frontend/web/.vercel/
 # Ignore docker volumes
 volumes/
 
-# Ignore test results
-junit.xml
+# Ignore test results (duplicate removed - now in Test output section)
 
 # Ignore pip cache
 pip-cache/
@@ -149,16 +159,11 @@ pip-cache/
 # Ignore pyright
 pyrightconfig.json
 
-# Ignore pytest cache
-.pytest_cache/
+# Ignore pytest cache (duplicate removed - now in Python tooling section)
 
-# Ignore mypy cache
-.mypy_cache/
+# Ignore mypy cache (duplicate removed - now in Python tooling section)
 
-# Ignore coverage
-.coverage
-coverage.xml
-htmlcov/
+# Ignore coverage (duplicate removed - now in Coverage section)
 
 # Ignore Sphinx build
 _build/
