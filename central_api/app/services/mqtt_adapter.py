@@ -54,7 +54,11 @@ def publish_command(train_id, command):
         logger.error(f"MQTT publish error: {e}")
         return False
 
-def get_train_status(train_id, local_testing=True):
+def get_train_status(train_id, local_testing=False):
+    """
+    Retrieve the real-time status of a train via MQTT.
+    If local_testing is True, returns mock data for development.
+    """
     from models.schemas import TrainStatus
     if local_testing:
         logger.info(f"Returning mock status for train {train_id}")
@@ -65,30 +69,42 @@ def get_train_status(train_id, local_testing=True):
             current=0.8,
             position="section_A"
         )
-    else:
-        status_topic = f"trains/{train_id}/status"
-        result = {}
-        def on_message(client, userdata, msg):
-            try:
-                payload = json.loads(msg.payload.decode())
-                result.update(payload)
-                logger.debug(f"Received status message: {payload}")
-            except Exception as e:
-                logger.error(f"Error decoding MQTT status: {e}")
-        adapter = MQTTAdapter(broker_address="mqtt", train_id=train_id)
+    status_topic = f"trains/{train_id}/status"
+    result = {}
+    received = False
+
+    def on_message(client, userdata, msg):
+        nonlocal received
+        try:
+            payload = json.loads(msg.payload.decode())
+            # Validate payload keys
+            required_keys = {"train_id", "speed", "voltage", "current", "position"}
+            if not required_keys.issubset(payload.keys()):
+                logger.error(f"Received status missing required keys: {payload}")
+                return
+            result.update(payload)
+            received = True
+            logger.debug(f"Received status message: {payload}")
+        except Exception as e:
+            logger.error(f"Error decoding MQTT status: {e}")
+
+    adapter = MQTTAdapter(broker_address="mqtt", train_id=train_id)
+    try:
         adapter.connect()
         adapter.client.on_message = on_message
         adapter.client.subscribe(status_topic)
         adapter.client.loop_start()
         import time
-        timeout = 2  # seconds
+        timeout = 3  # seconds
         start = time.time()
-        while not result and time.time() - start < timeout:
+        while not received and time.time() - start < timeout:
             time.sleep(0.1)
+    finally:
         adapter.client.loop_stop()
-        if result:
-            logger.info(f"Returning real status for train {train_id}")
-            return TrainStatus(**result)
-        else:
-            logger.warning(f"No status received for train {train_id}")
-            return None
+
+    if received:
+        logger.info(f"Returning real status for train {train_id}")
+        return TrainStatus(**result)
+    else:
+        logger.warning(f"No status received for train {train_id} after {timeout}s")
+        return None

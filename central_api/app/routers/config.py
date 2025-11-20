@@ -1,9 +1,27 @@
-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 import logging
 from services.config_manager import ConfigManager
 from models.schemas import Plugin, EdgeController, Train, FullConfig
 from typing import List
+from central_api.app.models.schemas import TrainStatus
+
+router = APIRouter()
+# Internal endpoint for updating train status
+@router.post("/status/update")
+def update_train_status(
+    train_id: str = Body(...),
+    speed: int = Body(...),
+    voltage: float = Body(...),
+    current: float = Body(...),
+    position: str = Body(...)
+):
+    """
+    Update the status of a train. Intended for edge-controller or internal use.
+    """
+    config.update_train_status(train_id, speed, voltage, current, position)
+    logger.info(f"Status updated for train {train_id}")
+    return {"message": "Status updated", "train_id": train_id}
+
 
 logger = logging.getLogger("central_api.routers.config")
 logger.setLevel(logging.INFO)
@@ -13,7 +31,6 @@ handler.setFormatter(formatter)
 if not logger.hasHandlers():
     logger.addHandler(handler)
 
-router = APIRouter()
 config = ConfigManager()
 
 
@@ -39,14 +56,18 @@ def list_all_trains_config():
     logger.info("GET /config/trains called")
     return config.get_trains()
 
-@router.get("/trains/{train_id}", response_model=Train)
-def get_train_by_id(train_id: str):
-    logger.info(f"GET /trains/{train_id} called")
-    train = config.get_train(train_id)
-    if not train:
-        logger.warning(f"Train not found: {train_id}")
-        raise HTTPException(status_code=404, detail="Train not found")
-    return train
+
+@router.get("/trains/{train_id}/status", response_model=TrainStatus)
+def get_train_status(train_id: str):
+    """
+    Get the latest status for a train from the database.
+    """
+    status = config.get_train_status(train_id)
+    if not status:
+        logger.warning(f"No status found for train {train_id}")
+        raise HTTPException(status_code=404, detail="Train status not available")
+    logger.info(f"Returning status for train {train_id}: {status}")
+    return status
 
 @router.get("/config/trains/{train_id}", response_model=Train)
 def get_train_config_by_id(train_id: str):

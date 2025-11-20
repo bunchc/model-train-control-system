@@ -1,3 +1,12 @@
+-- Table for train status (new for status updates)
+CREATE TABLE IF NOT EXISTS train_status (
+    train_id TEXT PRIMARY KEY,
+    speed INTEGER,
+    voltage REAL,
+    current REAL,
+    position TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 
 -- Table for plugins

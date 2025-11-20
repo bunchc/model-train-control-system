@@ -30,6 +30,7 @@ services:
       - "3000:3000"
 
   edge-controller:
+    profiles: ["disabled"]
     build:
       context: ../../edge-controllers/pi-template
       dockerfile: Dockerfile

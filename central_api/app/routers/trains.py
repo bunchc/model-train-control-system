@@ -58,10 +58,14 @@ async def send_command(train_id: str, command: dict):
 
 @router.get("/{train_id}/status")
 async def get_status(train_id: str):
+    """
+    Get real-time status for a train by querying the edge controller via MQTT.
+    Returns 404 if no status is received within timeout.
+    """
     logger.info(f"GET /api/trains/{train_id}/status called")
-    status = await get_train_status(train_id)
+    status = get_train_status(train_id, local_testing=False)
     if status is None:
-        logger.warning(f"Train not found: {train_id}")
-        raise HTTPException(status_code=404, detail="Train not found")
+        logger.warning(f"No status received for train {train_id}")
+        raise HTTPException(status_code=404, detail="Train status not available")
     logger.debug(f"Returning status for train {train_id}: {status}")
     return status

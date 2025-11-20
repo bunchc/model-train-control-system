@@ -18,11 +18,14 @@ if [ "$REBUILD" == "yes" ]; then
 fi
 
 function check_server {
+  "req_d23d9496dcb24bb6a1642eabdc9fb39b" # Read Root
   echo "Checking if FastAPI server is running on port 8000..."
   if nc -z localhost 8000; then
     echo "FastAPI server is running."
   else
     echo "FastAPI server is NOT running on port 8000."
+    echo -e "\nFetching central_api server logs (docker-central_api-1):"
+    docker logs docker-central_api-1
     exit 1
   fi
 }
@@ -41,6 +44,44 @@ INSO_REQUESTS=(
   "req_010ca9f3c40049168dedc812020c79d2" # List Trains
 )
 
+function run_insomnia_tests {
+  if [ "$RUN_ALL" == "yes" ]; then
+    echo -e "\nRunning full Insomnia collection..."
+    inso run collection wrk_faf1be --env env_7c7a2f7957 --reporter min --bail || return 1
+  else
+    echo -e "\nRunning Insomnia requests one at a time..."
+    for req_id in "${INSO_REQUESTS[@]}"; do
+      echo -e "\nRunning Insomnia request: $req_id"
+      if ! inso run collection wrk_faf1be --env env_7c7a2f7957 --item "$req_id" --reporter min; then
+        echo -e "\nInsomnia run failed. Collecting server logs."
+        return 1
+      fi
+    done
+  fi
+  return 0
+}
+
+function run_tests {
+  echo -e "\nRunning pytest integration test (test_end_to_end.py):"
+  PYTHONPATH=. pytest tests/integration/test_end_to_end.py
+  if [ $? -ne 0 ]; then
+    echo -e "\nPytest integration test failed. Collecting server logs."
+    docker logs docker-central_api-1
+    exit 1
+  fi
+
+  echo -e "\nPytest passed. Running Insomnia tests..."
+  run_insomnia_tests
+  if [ $? -ne 0 ]; then
+    echo -e "\nInsomnia tests failed. Collecting server logs."
+    docker logs docker-central_api-1
+    exit 1
+  fi
+
+  echo -e "\nAll tests passed."
+}
+
+run_tests
 if [ "$RUN_ALL" == "yes" ]; then
   echo -e "\nRunning full Insomnia collection..."
   inso run collection wrk_faf1be --env env_7c7a2f7957 --reporter min --bail || break
@@ -55,6 +96,11 @@ else
     fi
   done
 fi
+
+
+# Run pytest integration test for end-to-end API validation
+echo -e "\nRunning pytest integration test (test_end_to_end.py):"
+PYTHONPATH=. pytest tests/integration/test_end_to_end.py
 
 echo -e "\nCollecting central_api server logs (docker-central_api-1):"
 docker logs docker-central_api-1

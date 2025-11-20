@@ -83,6 +83,7 @@ class MQTTClient:
 
     def publish_status(self, status):
         logging.debug(f"publish_status called. Client connected: {self.client.is_connected()}, topic: {self.status_topic}, payload: {status}")
+        # Publish to MQTT as before
         try:
             result = self.client.publish(self.status_topic, json.dumps(status))
             logging.debug(f"Publish result object: {result}")
@@ -92,6 +93,18 @@ class MQTTClient:
                 logging.error(f"Failed to publish status to {self.status_topic}: {status} (result={result.rc})")
         except Exception as e:
             logging.error(f"Exception during publish_status: {e}")
+
+        # Also push status to central API /status/update
+        try:
+            import requests
+            api_url = "http://central_api:8000/api/status/update"  # Use docker compose service name or localhost if running locally
+            resp = requests.post(api_url, json=status, timeout=2)
+            if resp.status_code == 200:
+                logging.info(f"Pushed status to central API: {status}")
+            else:
+                logging.error(f"Failed to push status to central API: {resp.status_code} {resp.text}")
+        except Exception as e:
+            logging.error(f"Exception during HTTP push to central API: {e}")
 
     def start(self):
         try:

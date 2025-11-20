@@ -14,6 +14,38 @@ YAML_PATH = os.getenv("CENTRAL_API_CONFIG_YAML", "config.yaml")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "config_schema.sql")
 
 class ConfigManager:
+    def update_train_status(self, train_id: str, speed: int, voltage: float, current: float, position: str):
+        """
+        Update the status of a train in the train_status table.
+        """
+        cur = self.conn.cursor()
+        cur.execute(
+            "INSERT OR REPLACE INTO train_status (train_id, speed, voltage, current, position, updated_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+            (train_id, speed, voltage, current, position)
+        )
+        self.conn.commit()
+        self.logger.info(f"Updated train status for {train_id}: speed={speed}, voltage={voltage}, current={current}, position={position}")
+
+    def get_train_status(self, train_id: str):
+        """
+        Retrieve the latest status for a train from the train_status table.
+        """
+        cur = self.conn.cursor()
+        cur.execute("SELECT train_id, speed, voltage, current, position FROM train_status WHERE train_id=?", (train_id,))
+        row = cur.fetchone()
+        if row:
+            from central_api.app.models.schemas import TrainStatus
+            return TrainStatus(
+                train_id=row[0],
+                speed=row[1],
+                voltage=row[2],
+                current=row[3],
+                position=row[4]
+            )
+        else:
+            self.logger.warning(f"No status found for train {train_id}")
+            return None
+
     def get_plugins(self):
         """Return a list of Plugin objects from the plugins table."""
         conn = sqlite3.connect(self.db_path, check_same_thread=False)
