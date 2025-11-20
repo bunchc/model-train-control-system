@@ -309,6 +309,29 @@ class ConfigManager:
             trains=trains
         )
 
+    def add_edge_controller(self, uuid: str, name: str, address: str):
+        """
+        Add a new edge controller to the database.
+        
+        Args:
+            uuid: The UUID for the controller
+            name: The hostname/name of the controller
+            address: The IP address of the controller
+        """
+        import time
+        cur = self.conn.cursor()
+        cur.execute(
+            "INSERT INTO edge_controllers (id, name, description, address, enabled) VALUES (?, ?, ?, ?, ?)",
+            (uuid, name, f"Auto-registered controller {name}", address, 1)
+        )
+        self.conn.commit()
+        
+        # Update last_updated timestamp
+        cur.execute("UPDATE config_metadata SET value=? WHERE key='last_updated'", (str(int(time.time())),))
+        self.conn.commit()
+        
+        self.logger.info(f"Added edge controller: uuid={uuid}, name={name}, address={address}")
+
     def get_full_config(self) -> FullConfig:
         return FullConfig(
             plugins=self.get_plugins(),

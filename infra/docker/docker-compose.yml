@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   mqtt:
+    profiles: ["local-dev"]
     image: eclipse-mosquitto:latest
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
@@ -10,6 +11,7 @@ services:
       - "9001:9001"
 
   central_api:
+    profiles: ["local-dev"]
     build:
       context: ../../central_api
       dockerfile: Dockerfile
@@ -19,8 +21,14 @@ services:
       - "8000:8000"
     volumes:
       - ../../config.yaml:/app/config.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/api/ping\", timeout=2)'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   gateway:
+    profiles: ["local-dev"]
     build:
       context: ../../gateway/orchestrator
       dockerfile: Dockerfile
@@ -30,13 +38,22 @@ services:
       - "3000:3000"
 
   edge-controller:
-    profiles: ["disabled"]
+    profiles: ["local-dev", "remote-dev", "prod"]
     build:
       context: ../../edge-controllers/pi-template
-      dockerfile: Dockerfile
+      dockerfile: ${EDGE_CONTROLLER_DOCKERFILE:-Dockerfile}
     depends_on:
-      - mqtt
+      mqtt:
+        condition: service_started
+      central_api:
+        condition: service_healthy
     environment:
       - MQTT_BROKER=mqtt
       - MQTT_PORT=1883
-    restart: always
+      - LOCAL_DEV=${LOCAL_DEV:-false}
+
+  debug:
+    profiles: ["local-dev"]
+    image: nicolaka/netshoot:latest
+    tty: true
+    stdin_open: true

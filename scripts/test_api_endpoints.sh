@@ -2,30 +2,77 @@
 # test_api_endpoints.sh
 # Script to validate central_api endpoints and check FastAPI server status
 
+# Option to rebuild and restart Docker containers (default: yes)
 REBUILD=${1:-yes}
-API_URL="http://localhost:8000/api"
-COMPOSE_FILE="infra/docker/docker-compose.yml"
 # Option to run all requests as a collection or individually
 RUN_ALL=${RUN_ALL:-no}
 
+export API_URL="http://localhost:8000/api"
+export COMPOSE_FILE="infra/docker/docker-compose.yml"
+export LOCAL_DEV=true
+export COMPOSE_PROFILE="local-dev"
+export EDGE_CONTROLLER_DOCKERFILE="Dockerfile-local"
+
+
 if [ "$REBUILD" == "yes" ]; then
-    echo "Rebuilding and restarting Docker containers..."
-    docker compose -f ${COMPOSE_FILE} down || exit 1
-    docker compose -f ${COMPOSE_FILE} build --no-cache || exit 1
-    docker compose -f ${COMPOSE_FILE} up -d  || exit 1
-    echo "Waiting for FastAPI server to start..."
-    sleep 5
+  echo "Rebuilding and restarting Docker containers..."
+  docker compose --profile ${COMPOSE_PROFILE} -f ${COMPOSE_FILE} down || exit 1
+  docker compose --profile ${COMPOSE_PROFILE} -f ${COMPOSE_FILE} build --no-cache || exit 1
+  docker compose --profile ${COMPOSE_PROFILE} -f ${COMPOSE_FILE} up -d  || exit 1
+else
+  echo "Restarting Docker containers without rebuild..."  
+  docker compose --profile ${COMPOSE_PROFILE} -f ${COMPOSE_FILE} down || exit 1
+  docker compose --profile ${COMPOSE_PROFILE} -f ${COMPOSE_FILE} up -d  || exit 1
 fi
 
+echo "Waiting for FastAPI server to start..."
+sleep 5
+
+
 function check_server {
-  "req_d23d9496dcb24bb6a1642eabdc9fb39b" # Read Root
-  echo "Checking if FastAPI server is running on port 8000..."
+  echo "Checking if FastAPI server is running on port 8000 and /api/ping is reachable..."
   if nc -z localhost 8000; then
-    echo "FastAPI server is running."
+    # Check /api/ping endpoint
+    if curl -sSf http://localhost:8000/api/ping > /dev/null; then
+      echo "FastAPI server is running and /api/ping is reachable."
+    else
+      echo "FastAPI server is running, but /api/ping is NOT reachable."
+      echo -e "\nFetching central_api server logs (docker-central_api-1):"
+      docker logs docker-central_api-1
+      exit 1
+    fi
   else
     echo "FastAPI server is NOT running on port 8000."
     echo -e "\nFetching central_api server logs (docker-central_api-1):"
     docker logs docker-central_api-1
+    exit 1
+  fi
+}
+
+
+function check_mqtt {
+  echo "Checking if MQTT server is running..."
+  local status
+  status=$(docker ps --filter "name=docker-mqtt-1" --format '{{.Status}}')
+  if [[ "$status" == Up* ]]; then
+    echo "MQTT server is running."
+  else
+    echo "MQTT server is NOT healthy. Status: $status"
+    docker logs docker-mqtt-1
+    exit 1
+  fi
+}
+
+
+function check_edge_controller {
+  echo "Checking if edge-controller is running..."
+  local status
+  status=$(docker ps --filter "name=docker-edge-controller-1" --format '{{.Status}}')
+  if [[ "$status" == Up* ]]; then
+    echo "Edge controller is running."
+  else
+    echo "Edge controller is NOT healthy. Status: $status"
+    docker logs docker-edge-controller-1
     exit 1
   fi
 }
@@ -62,6 +109,10 @@ function run_insomnia_tests {
 }
 
 function run_tests {
+  check_mqtt
+  check_server
+  check_edge_controller
+  
   echo -e "\nRunning pytest integration test (test_end_to_end.py):"
   PYTHONPATH=. pytest tests/integration/test_end_to_end.py
   if [ $? -ne 0 ]; then

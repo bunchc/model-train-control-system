@@ -10,6 +10,7 @@ if not os.path.exists(CONFIG_PATH):
 else:
     print(f"[Startup] Found config.yaml at {CONFIG_PATH}")
 
+
 app = FastAPI()
 
 # CORS configuration
@@ -23,7 +24,15 @@ app.add_middleware(
 
 # Include routers
 app.include_router(config.router, prefix="/api")
+app.include_router(trains.router, prefix="/api/trains")
 
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the Model Train Control System API"}
+
+@app.get("/api/ping")
+def ping():
+    """
+    Health check endpoint for central_api. Returns 200 if service is up.
+    """
+    return {"status": "ok"}

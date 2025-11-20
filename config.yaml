@@ -31,7 +31,7 @@ plugins:
 
 # Controller Config Example
 edge_controllers:
-  - id: "{UUID}"
+  - id: "${UUID}"
     name: "Holiday Display"
     description: |
       Durango Silverton and Silver Streak Trains
@@ -41,7 +41,7 @@ edge_controllers:
       - name: "Durango Silverton"
         description: |
           n Scale model of Durango Silverton from Bachman
-        id: "{UUID}"
+        id: "${UUID}"
         model: "American Locomotive Works K-28"
         plugin:
           # References the name from the plugins list above
@@ -52,7 +52,7 @@ edge_controllers:
       - name: "Silver Streak Zephyr"
         description: |
           n Scale model of Silver Streak Zephyr from Kato
-        id: "{UUID}"
+        id: "${UUID}"
         model: "Electro-Motive Corporation EMC E5A"
         plugin:
           # References the name from the plugins list above
