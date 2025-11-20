@@ -1,0 +1,298 @@
+name: CI Security & Quality
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+env:
+  PYTHON_VERSION: '3.9'
+
+jobs:
+  # ============================================================================
+  # Job 1: Code Quality & Security (Fast Fail)
+  # ============================================================================
+  code-quality:
+    name: Code Quality & Security Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "edge-controllers/pi-template[dev]"
+
+      - name: Run Ruff Linting
+        run: |
+          cd edge-controllers/pi-template
+          ruff check app/ tests/
+        continue-on-error: false
+
+      - name: Run Ruff Format Check
+        run: |
+          cd edge-controllers/pi-template
+          ruff format --check app/ tests/
+        continue-on-error: false
+
+      - name: Run Bandit Security Analysis
+        run: |
+          cd edge-controllers/pi-template
+          bandit -c pyproject.toml -r app/ -f json -o bandit-report.json
+          bandit -c pyproject.toml -r app/ -f screen
+        continue-on-error: false
+
+      - name: Upload Bandit Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: edge-controllers/pi-template/bandit-report.json
+          retention-days: 30
+
+      - name: Run MyPy Type Checking
+        run: |
+          cd edge-controllers/pi-template
+          mypy app/ --junit-xml mypy-report.xml
+        continue-on-error: false
+
+      - name: Upload MyPy Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mypy-type-report
+          path: edge-controllers/pi-template/mypy-report.xml
+          retention-days: 30
+
+      - name: Check for Vulnerable Dependencies (Safety)
+        run: |
+          cd edge-controllers/pi-template
+          safety check --json --output safety-report.json
+          safety check
+        continue-on-error: true  # Warning only, don't fail on this
+
+      - name: Upload Safety Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: safety-vulnerability-report
+          path: edge-controllers/pi-template/safety-report.json
+          retention-days: 30
+
+  # ============================================================================
+  # Job 2: Test Suite with Coverage
+  # ============================================================================
+  test-suite:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    needs: code-quality  # Only run if code quality passes
+    timeout-minutes: 15
+
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "edge-controllers/pi-template[dev]"
+
+      - name: Run Unit Tests
+        run: |
+          cd edge-controllers/pi-template
+          pytest -v -m unit tests/unit/ --cov --cov-report=xml --cov-report=term
+
+      - name: Run Integration Tests
+        run: |
+          cd edge-controllers/pi-template
+          pytest -v -m integration tests/integration/ --cov --cov-append --cov-report=xml --cov-report=term
+
+      - name: Run E2E Tests
+        run: |
+          cd edge-controllers/pi-template
+          pytest -v -m e2e tests/e2e/ --cov --cov-append --cov-report=xml --cov-report=term
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: edge-controllers/pi-template/coverage.xml
+          flags: unittests
+          name: codecov-edge-controller-py${{ matrix.python-version }}
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-py${{ matrix.python-version }}
+          path: |
+            edge-controllers/pi-template/coverage.xml
+            edge-controllers/pi-template/htmlcov/
+          retention-days: 30
+
+  # ============================================================================
+  # Job 3: Container Security Scanning
+  # ============================================================================
+  container-security:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    needs: code-quality  # Only run if code quality passes
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image (Local Test)
+        uses: docker/build-push-action@v5
+        with:
+          context: edge-controllers/pi-template
+          file: edge-controllers/pi-template/Dockerfile
+          push: false
+          load: true
+          tags: edge-controller:test-local
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: edge-controller:test-local
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          exit-code: '1'  # Fail on CRITICAL vulnerabilities
+          ignore-unfixed: false
+          vuln-type: 'os,library'
+
+      - name: Upload Trivy SARIF Report
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'container-security'
+
+      - name: Run Trivy for JSON Report
+        if: always()
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: edge-controller:test-local
+          format: 'json'
+          output: 'trivy-results.json'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
+
+      - name: Upload Trivy JSON Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-container-scan
+          path: trivy-results.json
+          retention-days: 30
+
+      - name: Scan Image with Dockle (Best Practices)
+        run: |
+          VERSION=$(curl --silent "https://api.github.com/repos/goodwithtech/dockle/releases/latest" | \
+            grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          curl -L -o dockle.tar.gz https://github.com/goodwithtech/dockle/releases/download/v${VERSION}/dockle_${VERSION}_Linux-64bit.tar.gz
+          tar zxf dockle.tar.gz
+          ./dockle --exit-code 1 --exit-level fatal edge-controller:test-local
+
+  # ============================================================================
+  # Job 4: SBOM Generation
+  # ============================================================================
+  sbom-generation:
+    name: Generate Software Bill of Materials
+    runs-on: ubuntu-latest
+    needs: container-security
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: edge-controllers/pi-template
+          file: edge-controllers/pi-template/Dockerfile
+          push: false
+          load: true
+          tags: edge-controller:sbom
+          cache-from: type=gha
+
+      - name: Generate SBOM with Syft
+        uses: anchore/sbom-action@v0
+        with:
+          image: edge-controller:sbom
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-spdx
+          path: sbom.spdx.json
+          retention-days: 90
+
+  # ============================================================================
+  # Job 5: Security Summary
+  # ============================================================================
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [code-quality, test-suite, container-security, sbom-generation]
+    if: always()
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Generate Security Summary
+        run: |
+          echo "# Security & Quality Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Build Status" >> $GITHUB_STEP_SUMMARY
+          echo "- Code Quality: ${{ needs.code-quality.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Test Suite: ${{ needs.test-suite.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Container Security: ${{ needs.container-security.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- SBOM Generation: ${{ needs.sbom-generation.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Artifacts Generated" >> $GITHUB_STEP_SUMMARY
+          echo "- Bandit Security Report" >> $GITHUB_STEP_SUMMARY
+          echo "- MyPy Type Report" >> $GITHUB_STEP_SUMMARY
+          echo "- Safety Vulnerability Report" >> $GITHUB_STEP_SUMMARY
+          echo "- Trivy Container Scan" >> $GITHUB_STEP_SUMMARY
+          echo "- SBOM (SPDX)" >> $GITHUB_STEP_SUMMARY
+          echo "- Test Coverage Reports" >> $GITHUB_STEP_SUMMARY

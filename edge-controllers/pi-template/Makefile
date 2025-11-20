@@ -1,4 +1,4 @@
-.PHONY: help install dev-install format lint type-check test test-unit test-integration test-e2e test-fast coverage clean check all
+.PHONY: help install dev-install format lint type-check security test test-unit test-integration test-e2e test-fast coverage clean check all
 
 # Default target
 .DEFAULT_GOAL := help
@@ -43,6 +43,24 @@ type-check: ## Run mypy type checker
 	@echo "$(CYAN)Running type checker...$(RESET)"
 	mypy app/
 
+security: ## Run all security scans
+	@echo "$(CYAN)Running security scans...$(RESET)"
+	@echo "$(YELLOW)Bandit (Security Linting)...$(RESET)"
+	bandit -c pyproject.toml -r app/
+	@echo "$(YELLOW)Safety (Dependency Vulnerabilities)...$(RESET)"
+	safety check
+	@echo "$(GREEN)Security scans complete$(RESET)"
+
+security-bandit: ## Run Bandit security scan
+	@echo "$(CYAN)Running Bandit security scan...$(RESET)"
+	bandit -c pyproject.toml -r app/ -f screen
+	bandit -c pyproject.toml -r app/ -f json -o bandit-report.json
+
+security-safety: ## Check dependencies for vulnerabilities
+	@echo "$(CYAN)Checking dependencies for vulnerabilities...$(RESET)"
+	safety check --json --output safety-report.json
+	safety check
+
 test-unit: ## Run unit tests only
 	@echo "$(CYAN)Running unit tests...$(RESET)"
 	pytest -v -m unit tests/unit/
@@ -77,13 +95,33 @@ clean: ## Clean up cache and build artifacts
 	find . -type d -name "htmlcov" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name ".coverage" -delete 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	rm -f bandit-report.json safety-report.json mypy-report.xml
 	@echo "$(GREEN)Cleanup complete$(RESET)"
 
-check: format-check lint type-check test-fast ## Run all quality checks (fast)
+check: format-check lint type-check security test-fast ## Run all quality & security checks (fast)
 	@echo "$(GREEN)All checks passed!$(RESET)"
 
-all: format lint type-check test coverage ## Run all checks and tests
+all: format lint type-check security test coverage ## Run all checks, tests, and coverage
 	@echo "$(GREEN)All tasks completed successfully!$(RESET)"
 
-ci: format-check lint type-check test ## CI pipeline (no formatting, all tests)
+ci: format-check lint type-check security test ## CI pipeline (no formatting, all tests)
 	@echo "$(GREEN)CI pipeline passed!$(RESET)"
+
+docker-build: ## Build Docker image
+	@echo "$(CYAN)Building Docker image...$(RESET)"
+	docker build -t edge-controller:local .
+
+docker-scan: docker-build ## Scan Docker image for vulnerabilities
+	@echo "$(CYAN)Scanning Docker image...$(RESET)"
+	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+		aquasec/trivy image edge-controller:local
+
+pre-commit-install: ## Install pre-commit hooks
+	@echo "$(CYAN)Installing pre-commit hooks...$(RESET)"
+	pre-commit install
+	pre-commit install --hook-type commit-msg
+	@echo "$(GREEN)Pre-commit hooks installed$(RESET)"
+
+pre-commit-run: ## Run pre-commit on all files
+	@echo "$(CYAN)Running pre-commit on all files...$(RESET)"
+	pre-commit run --all-files

@@ -1,0 +1,163 @@
+# Dependabot configuration for automated dependency updates
+# Docs: https://docs.github.com/en/code-security/dependabot
+
+version: 2
+
+updates:
+  # ============================================================================
+  # Python Dependencies (edge-controllers)
+  # ============================================================================
+  - package-ecosystem: "pip"
+    directory: "/edge-controllers/pi-template"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "bunchc"
+    labels:
+      - "dependencies"
+      - "security"
+      - "edge-controllers"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    # Version update strategy
+    versioning-strategy: increase
+    # Allow both direct and indirect dependencies
+    allow:
+      - dependency-type: "all"
+
+  # ============================================================================
+  # Docker Dependencies (edge-controllers)
+  # ============================================================================
+  - package-ecosystem: "docker"
+    directory: "/edge-controllers/pi-template"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "bunchc"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "edge-controllers"
+    commit-message:
+      prefix: "chore(docker)"
+      include: "scope"
+
+  # ============================================================================
+  # GitHub Actions Dependencies
+  # ============================================================================
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "bunchc"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
+
+  # ============================================================================
+  # Python Dependencies (central_api)
+  # ============================================================================
+  - package-ecosystem: "pip"
+    directory: "/central_api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "bunchc"
+    labels:
+      - "dependencies"
+      - "security"
+      - "central-api"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    versioning-strategy: increase
+    allow:
+      - dependency-type: "all"
+
+  # ============================================================================
+  # Docker Dependencies (central_api)
+  # ============================================================================
+  - package-ecosystem: "docker"
+    directory: "/central_api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "bunchc"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "central-api"
+    commit-message:
+      prefix: "chore(docker)"
+      include: "scope"
+
+  # ============================================================================
+  # NPM Dependencies (frontend)
+  # ============================================================================
+  - package-ecosystem: "npm"
+    directory: "/frontend/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "bunchc"
+    labels:
+      - "dependencies"
+      - "frontend"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    versioning-strategy: increase
+    allow:
+      - dependency-type: "all"
+
+  # ============================================================================
+  # NPM Dependencies (gateway)
+  # ============================================================================
+  - package-ecosystem: "npm"
+    directory: "/gateway/orchestrator"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "bunchc"
+    labels:
+      - "dependencies"
+      - "gateway"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    versioning-strategy: increase
+    allow:
+      - dependency-type: "all"
