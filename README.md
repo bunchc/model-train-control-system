@@ -183,19 +183,41 @@ pytest tests/ --cov=edge-controllers/pi-template/app --cov-report=html
 
 ### Code Quality
 
+**IMPORTANT: Pre-commit hooks are mandatory for all contributors.**
+
+Pre-commit hooks ensure code quality before committing by automatically running linters, formatters, and security scanners. All checks must pass before code can be committed.
+
 ```bash
-# Linting (Ruff)
-ruff check edge-controllers/pi-template/app/
+# Install pre-commit hooks (REQUIRED - do this once after cloning)
+pre-commit install
+
+# Run all checks manually (useful for troubleshooting)
+pre-commit run --all-files
+
+# Pre-commit will now run automatically on every commit
+# If checks fail, fix the issues and commit again
+```
+
+**What pre-commit checks:**
+
+- **Ruff**: Python linting and formatting (edge-controllers, central_api)
+- **Bandit**: Security vulnerability scanning
+- **Markdownlint**: Markdown file formatting and best practices
+- **Gitleaks**: Prevents committing secrets/credentials
+- **YAML/JSON**: Validates config file syntax
+- **File checks**: Trailing whitespace, end-of-file newlines, large files
+
+**Manual quality checks** (pre-commit runs these automatically):
+
+```bash
+# Linting (Ruff) - auto-fixes many issues
+ruff check edge-controllers/pi-template/app/ --fix
 
 # Type checking (MyPy)
 mypy edge-controllers/pi-template/app/
 
 # Security scanning (Bandit)
 bandit -r edge-controllers/pi-template/app/ -ll
-
-# Pre-commit hooks (auto-runs on commit)
-pre-commit install
-pre-commit run --all-files
 ```
 
 ### Adding a New Feature

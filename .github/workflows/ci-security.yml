@@ -1,13 +1,23 @@
 name: CI Security & Quality
 
+# This workflow runs edge-controller specific security and quality checks.
+# Note: General linting/formatting is now handled by pre-commit-ci.yml
+# This workflow provides additional edge-controller-specific validations.
+
 on:
   push:
     branches:
       - '**'
+    paths:
+      - 'edge-controllers/**'
+      - '.github/workflows/ci-security.yml'
   pull_request:
     branches:
       - main
       - develop
+    paths:
+      - 'edge-controllers/**'
+      - '.github/workflows/ci-security.yml'
 
 env:
   PYTHON_VERSION: '3.9'

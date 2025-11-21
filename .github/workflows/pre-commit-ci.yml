@@ -1,0 +1,41 @@
+name: Pre-commit Quality Checks
+
+# This workflow runs pre-commit hooks in CI to ensure code quality.
+# It's the single source of truth for linting, formatting, and security checks.
+# Pre-commit hooks are defined in .pre-commit-config.yaml at the repository root.
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+      - 'fix/**'
+      - 'chore/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  pre-commit:
+    name: Run Pre-commit Hooks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Set up Node.js (for markdown linting)
+        uses: actions/setup-node@v6
+        with:
+          node-version: '18'
+
+      - name: Run pre-commit on all files
+        uses: pre-commit/action@v3.0.0
+        with:
+          extra_args: --all-files
