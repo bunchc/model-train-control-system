@@ -25,7 +25,7 @@ Typical usage:
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 
@@ -128,7 +128,7 @@ class ConfigLoader:
         except OSError as exc:
             raise ConfigLoadError(f"Failed to read config file: {exc}") from exc
 
-    def load_cached_runtime_config(self) -> dict[str, Any] | None:
+    def load_cached_runtime_config(self) -> Optional[dict[str, Any]]:
         """Load cached runtime configuration.
 
         Runtime configuration is downloaded from the central API and cached

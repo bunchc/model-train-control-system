@@ -126,19 +126,33 @@ class EdgeControllerApp:
         Returns:
             True if initialization successful, False otherwise
         """
+        logger.info("="*60)
+        logger.info("EDGE CONTROLLER INITIALIZATION STARTED")
+        logger.info("="*60)
+        logger.info(f"Environment: LOCAL_DEV={LOCAL_DEV}")
+        logger.info(f"Hardware Available: {HARDWARE_AVAILABLE}")
+
         # Initialize configuration
         try:
             # Locate config files relative to this script
             config_path = Path(__file__).parent / "edge-controller.conf"
             cached_config_path = Path(__file__).parent / "edge-controller.yaml"
 
+            logger.info(f"Loading service config from: {config_path}")
+            logger.info(f"Cached runtime config path: {cached_config_path}")
+
             # Load service config and download/cache runtime config
             self.config_manager = ConfigManager(config_path, cached_config_path)
+            logger.info("Initializing configuration manager...")
             service_config, runtime_config = self.config_manager.initialize()
+            logger.info("✓ Configuration manager initialized successfully")
 
         except ConfigurationError as e:
             # Critical error - cannot proceed (service config missing or API unreachable with no cache)
-            logger.error(f"Configuration initialization failed: {e}")
+            logger.error("="*60)
+            logger.error("CRITICAL ERROR: Configuration initialization failed")
+            logger.error(f"Error: {e}")
+            logger.error("="*60)
             return False
 
         # Check if we have runtime configuration
@@ -154,33 +168,44 @@ class EdgeControllerApp:
             return True  # Valid state - waiting for config
 
         # Extract runtime configuration
+        logger.info("Extracting runtime configuration...")
         self.train_id = runtime_config.get("train_id")
+        logger.info(f"✓ Assigned to train: {self.train_id}")
         mqtt_broker = runtime_config.get("mqtt_broker", {})
         status_topic = runtime_config.get("status_topic", f"trains/{self.train_id}/status")
         commands_topic = runtime_config.get("commands_topic", f"trains/{self.train_id}/commands")
 
+        logger.info("MQTT Configuration:")
+        logger.info(f"  Broker: {mqtt_broker.get('host', 'localhost')}:{mqtt_broker.get('port', 1883)}")
+        logger.info(f"  Status Topic: {status_topic}")
+        logger.info(f"  Commands Topic: {commands_topic}")
+
         # Initialize hardware controller
+        logger.info("Initializing hardware controller...")
         if HARDWARE_AVAILABLE:
             try:
                 from stepper_hat import StepperMotorHatController
 
                 self.hardware_controller = StepperMotorHatController()
-                logger.info("Hardware controller initialized")
+                logger.info("✓ Hardware controller initialized (real hardware)")
             except Exception as e:
-                logger.error(f"Failed to initialize hardware controller: {e}")
+                logger.error(f"✗ Failed to initialize hardware controller: {e}")
                 return False
         else:
             self.hardware_controller = StepperMotorSimulator()
-            logger.info("Running in simulation mode (no hardware)")
+            logger.info("✓ Hardware controller initialized (SIMULATION MODE)")
 
         # Initialize MQTT client
+        logger.info("Setting up MQTT client...")
         try:
             # Construct Central API URL for HTTP fallback (status publishing)
             central_api_host = service_config.get("central_api_host", "localhost")
             central_api_port = service_config.get("central_api_port", 8000)
             central_api_url = f"http://{central_api_host}:{central_api_port}"
+            logger.info(f"Central API URL: {central_api_url}")
 
             # Create MQTT client with connection details from runtime config
+            logger.info("Creating MQTT client instance...")
             self.mqtt_client = MQTTClient(
                 broker_host=mqtt_broker.get("host", "localhost"),
                 broker_port=mqtt_broker.get("port", 1883),
@@ -195,14 +220,23 @@ class EdgeControllerApp:
 
             # Connect to broker and subscribe to commands topic
             # This is blocking until connection succeeds or timeout
+            logger.info("Connecting to MQTT broker...")
             self.mqtt_client.start()
-            logger.info("MQTT client started successfully")
+            logger.info("✓ MQTT client started successfully")
+            logger.info(f"✓ Subscribed to commands on: {commands_topic}")
+            logger.info(f"✓ Publishing status to: {status_topic}")
 
         except MQTTClientError as e:
             # MQTT connection failed - cannot proceed without real-time communication
-            logger.error(f"Failed to start MQTT client: {e}")
+            logger.error("="*60)
+            logger.error("CRITICAL ERROR: MQTT connection failed")
+            logger.error(f"Error: {e}")
+            logger.error("="*60)
             return False
 
+        logger.info("="*60)
+        logger.info("✓ EDGE CONTROLLER INITIALIZATION COMPLETE")
+        logger.info("="*60)
         return True
 
     def _handle_command(self, command: Dict[str, Any]) -> None:
@@ -226,7 +260,9 @@ class EdgeControllerApp:
             This method does not raise exceptions. All errors are caught and
             logged in _execute_hardware_command() to prevent MQTT callback failures.
         """
-        logger.info(f"Received command: {command}")
+        logger.info("="*40)
+        logger.info(f">>> COMMAND RECEIVED: {command}")
+        logger.info("="*40)
 
         # Execute command on hardware
         self._execute_hardware_command(command)
@@ -273,24 +309,27 @@ class EdgeControllerApp:
             # Command: start motor at specified speed
             if action == "start":
                 speed = command.get("speed", 50)  # Default to 50% if not specified
+                logger.info(f"Executing START command (speed={speed})...")
                 self.hardware_controller.start(speed)
-                logger.info(f"Started motor at speed {speed}")
+                logger.info(f"✓ Motor started at speed {speed}")
 
             # Command: stop motor immediately
             elif action == "stop":
+                logger.info("Executing STOP command...")
                 self.hardware_controller.stop()
-                logger.info("Stopped motor")
+                logger.info("✓ Motor stopped")
 
             # Command: change speed without stopping
             elif action == "setSpeed":
                 speed = command.get("speed", 50)  # Default to 50% if not specified
+                logger.info(f"Executing SET_SPEED command (speed={speed})...")
                 self.hardware_controller.set_speed(speed)
-                logger.info(f"Set speed to {speed}")
+                logger.info(f"✓ Speed set to {speed}")
 
             # Unknown action - log warning but don't fail
             # This allows for future command types without code changes
             else:
-                logger.warning(f"Unknown action: {action}")
+                logger.warning(f"⚠ Unknown action: {action}")
 
         except Exception as e:
             # Catch all hardware exceptions to prevent MQTT loop crash
@@ -321,13 +360,23 @@ class EdgeControllerApp:
 
 def main() -> None:
     """Application entry point."""
-    logger.info("Starting edge controller and MQTT client.")
-    logger.debug("[DEBUG TEST] If you see this, DEBUG logging is enabled.")
+    logger.info("")
+    logger.info("#" * 70)
+    logger.info("#" + " " * 68 + "#")
+    logger.info("#" + " " * 20 + "EDGE CONTROLLER STARTING" + " " * 24 + "#")
+    logger.info("#" + " " * 68 + "#")
+    logger.info("#" * 70)
+    logger.info("")
+    logger.debug("[DEBUG TEST] Debug logging is enabled")
 
     app = EdgeControllerApp()
 
     if not app.initialize():
-        logger.error("Failed to initialize application")
+        logger.error("")
+        logger.error("#" * 70)
+        logger.error("#  INITIALIZATION FAILED - EXITING" + " " * 33 + "#")
+        logger.error("#" * 70)
+        logger.error("")
         sys.exit(1)
 
     app.run()

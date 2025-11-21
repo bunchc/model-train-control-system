@@ -32,7 +32,7 @@ Typical usage:
 import logging
 import socket
 import time
-from typing import Any
+from typing import Any, Optional
 
 import requests
 from requests.exceptions import ConnectionError as RequestsConnectionError
@@ -302,7 +302,7 @@ class CentralAPIClient:
         except (KeyError, ValueError) as exc:
             raise APIRegistrationError(f"Invalid registration response: {exc}") from exc
 
-    def download_runtime_config(self, controller_uuid: str) -> dict[str, Any] | None:
+    def download_runtime_config(self, controller_uuid: str) -> Optional[dict[str, Any]]:
         """Download runtime configuration for a controller.
 
         Calls GET /api/controllers/{uuid}/config to retrieve runtime configuration.

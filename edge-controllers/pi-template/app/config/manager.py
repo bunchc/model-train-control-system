@@ -27,7 +27,7 @@ Typical usage:
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Tuple
 
 from api.client import APIRegistrationError, CentralAPIClient
 from config.loader import ConfigLoader, ConfigLoadError
@@ -107,10 +107,10 @@ class ConfigManager:
         """
         self.loader = ConfigLoader(config_path, cached_config_path)
         self.api_client: CentralAPIClient | None = None
-        self._service_config: dict[str, Any] | None = None
-        self._runtime_config: dict[str, Any] | None = None
+        self._service_config: Optional[dict[str, Any]] = None
+        self._runtime_config: Optional[dict[str, Any]] = None
 
-    def initialize(self) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    def initialize(self) -> Tuple[dict[str, Any], Optional[dict[str, Any]]]:
         """Initialize and load both service and runtime configurations.
 
         This is the main entry point for configuration initialization. It orchestrates
@@ -183,7 +183,7 @@ class ConfigManager:
 
     def _use_cached_config_fallback(
         self,
-    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    ) -> Tuple[dict[str, Any], Optional[dict[str, Any]]]:
         """Fallback to cached config when API is unavailable.
 
         This method enables offline operation by using previously cached
@@ -221,7 +221,7 @@ class ConfigManager:
 
     def _refresh_existing_controller(
         self, cached_config: dict[str, Any]
-    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    ) -> Tuple[dict[str, Any], Optional[dict[str, Any]]]:
         """Refresh configuration for existing controller.
 
         Called when cached config contains a UUID, indicating this controller
@@ -286,7 +286,7 @@ class ConfigManager:
 
     def _register_new_controller(
         self,
-    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    ) -> Tuple[dict[str, Any], Optional[dict[str, Any]]]:
         """Register as new controller with central API.
 
         Called when no cached UUID exists, indicating this is a first-time boot
@@ -394,6 +394,6 @@ class ConfigManager:
         return self._service_config
 
     @property
-    def runtime_config(self) -> dict[str, Any] | None:
+    def runtime_config(self) -> Optional[dict[str, Any]]:
         """Get runtime configuration."""
         return self._runtime_config

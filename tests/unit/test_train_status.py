@@ -4,6 +4,7 @@ from central_api.app.models.schemas import TrainStatus
 import tempfile
 import os
 
+
 @pytest.fixture
 def temp_db():
     db_fd, db_path = tempfile.mkstemp()

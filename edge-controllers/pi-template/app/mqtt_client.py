@@ -43,7 +43,7 @@ Typical usage:
 
 import json
 import logging
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import paho.mqtt.client as mqtt
 import requests
@@ -142,9 +142,9 @@ class MQTTClient:
         status_topic: str,
         commands_topic: str,
         command_handler: Callable[[dict[str, Any]], None],
-        username: str | None = None,
-        password: str | None = None,
-        central_api_url: str | None = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        central_api_url: Optional[str] = None,
     ) -> None:
         """Initialize MQTT client.
 
@@ -221,19 +221,22 @@ class MQTTClient:
         """
         # Check connection result code (0 = success)
         if return_code == 0:
-            logger.info(f"Connected to MQTT broker at {self.broker_host}:{self.broker_port}")
+            logger.info("="*50)
+            logger.info(f"✓ Connected to MQTT broker at {self.broker_host}:{self.broker_port}")
+            logger.info("="*50)
 
             # Automatically subscribe to commands topic on successful connection
             # This ensures we receive commands even after reconnection
             try:
+                logger.info(f"Subscribing to commands topic: {self.commands_topic}")
                 result = client.subscribe(self.commands_topic)
                 # result is tuple: (result_code, message_id)
                 if result[0] == mqtt.MQTT_ERR_SUCCESS:
-                    logger.info(f"Subscribed to topic: {self.commands_topic}")
+                    logger.info(f"✓ Subscribed to topic: {self.commands_topic}")
                 else:
-                    logger.error(f"Failed to subscribe to {self.commands_topic}: {result}")
+                    logger.error(f"✗ Failed to subscribe to {self.commands_topic}: {result}")
             except Exception as exc:
-                logger.error(f"Exception during subscription: {exc}")
+                logger.error(f"✗ Exception during subscription: {exc}")
         else:
             # Connection failed - translate MQTT error codes to human-readable messages
             error_messages = {
@@ -279,24 +282,32 @@ class MQTTClient:
         try:
             # Step 1: Decode raw bytes to UTF-8 string
             payload = msg.payload.decode("utf-8")
-            logger.info(f"Received message on {msg.topic}: {payload}")
+            logger.info("")
+            logger.info(">>> MQTT MESSAGE RECEIVED <<<")
+            logger.info(f"Topic: {msg.topic}")
+            logger.info(f"Payload: {payload}")
+            logger.info(f"QoS: {msg.qos}")
 
             # Step 2: Parse JSON string to Python dict
             command = json.loads(payload)
+            logger.info(f"Parsed command: {command}")
 
             # Step 3: Validate payload is a dict (not array, string, number, etc.)
             # This prevents TypeError when accessing command.get('action')
             if not isinstance(command, dict):
-                logger.error("Command payload is not a JSON object")
+                logger.error("✗ Command payload is not a JSON object")
                 return
 
             # Step 4: Invoke application-specific command handler
             # Handler is responsible for validating action, speed, etc.
+            logger.info("Invoking command handler...")
             self.command_handler(command)
+            logger.info("✓ Command handler completed")
 
         except json.JSONDecodeError as exc:
             # JSON parsing failed - malformed JSON from sender
-            logger.error(f"Failed to parse command JSON: {exc}")
+            logger.error(f"✗ Failed to parse command JSON: {exc}")
+            logger.error(f"Raw payload: {msg.payload}")
         except Exception as exc:
             # Catch-all for any other errors to prevent MQTT loop crash
             logger.error(f"Error handling command: {exc}")
@@ -319,9 +330,12 @@ class MQTTClient:
             This callback is for logging/monitoring only.
         """
         if return_code != 0:
-            logger.warning(f"Unexpected MQTT disconnection (code: {return_code})")
+            logger.warning("="*50)
+            logger.warning(f"⚠ Unexpected MQTT disconnection (code: {return_code})")
+            logger.warning("MQTT client will attempt automatic reconnection...")
+            logger.warning("="*50)
         else:
-            logger.info("Disconnected from MQTT broker")
+            logger.info("✓ Disconnected from MQTT broker (clean disconnect)")
 
     def start(self) -> None:
         """Start the MQTT client and connect to broker.
@@ -351,16 +365,25 @@ class MQTTClient:
             ...     sys.exit(1)
         """
         try:
-            logger.info(f"Connecting to MQTT broker at {self.broker_host}:{self.broker_port}")
+            logger.info("Initiating MQTT connection...")
+            logger.info(f"  Broker: {self.broker_host}:{self.broker_port}")
+            logger.info(f"  Train ID: {self.train_id}")
+            logger.info(f"  Keepalive: 60 seconds")
+
             self.client.connect(self.broker_host, self.broker_port, keepalive=60)
+            logger.info("✓ TCP connection established")
+
             self.client.loop_start()
-            logger.info("MQTT client loop started")
+            logger.info("✓ MQTT client loop started (background thread)")
 
         except ConnectionRefusedError as exc:
+            logger.error(f"✗ Connection refused by broker: {exc}")
             raise MQTTConnectionError(f"Connection refused: {exc}") from exc
         except OSError as exc:
+            logger.error(f"✗ Network error connecting to broker: {exc}")
             raise MQTTConnectionError(f"Network error: {exc}") from exc
         except Exception as exc:
+            logger.error(f"✗ Unexpected error starting MQTT client: {exc}")
             raise MQTTConnectionError(f"Failed to start MQTT client: {exc}") from exc
 
     def stop(self) -> None:
@@ -378,11 +401,13 @@ class MQTTClient:
             MQTT configurations.
         """
         try:
+            logger.info("Stopping MQTT client...")
             self.client.loop_stop()
+            logger.info("✓ MQTT loop stopped")
             self.client.disconnect()
-            logger.info("MQTT client stopped")
+            logger.info("✓ MQTT client disconnected")
         except Exception as exc:
-            logger.error(f"Error stopping MQTT client: {exc}")
+            logger.error(f"✗ Error stopping MQTT client: {exc}")
 
     def publish_status(self, status: dict[str, Any]) -> None:
         """Publish train status to MQTT and optionally HTTP endpoint.
