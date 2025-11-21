@@ -1,5 +1,5 @@
 # Multi-stage build for optimized image size and security
-FROM python:3.9-slim AS builder
+FROM python:3.14-slim AS builder
 
 # Install build dependencies with pinned versions
 RUN apt-get update && \
@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir --upgrade pip==24.0 && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Final stage - minimal runtime image
-FROM python:3.9-slim
+FROM python:3.14-slim
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
