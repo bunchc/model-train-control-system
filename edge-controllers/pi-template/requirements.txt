@@ -2,10 +2,10 @@
 paho-mqtt==1.6.1
 
 # HTTP Client
-requests==2.31.0
+requests==2.32.5
 
 # Web Framework
-fastapi==0.110.0
+fastapi==0.121.3
 uvicorn[standard]==0.29.0
 
 # GPIO Control (Pi-specific)
@@ -17,12 +17,12 @@ pyyaml==6.0.1
 
 # Code Quality
 ruff==0.3.4
-mypy==1.9.0
+mypy==1.18.2
 
 # Security Scanning
 bandit==1.7.8
-safety==3.1.0
+safety==3.7.0
 
 # Type Stubs
-types-requests==2.31.0.20240406
+types-requests==2.32.4.20250913
 types-pyyaml==6.0.12.20240311
