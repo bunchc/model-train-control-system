@@ -178,7 +178,7 @@ async def handle_command(command: Command):
         logging.warning("Invalid command received.")
         return {"error": "Invalid command"}
     except Exception as e:
-        logging.exception(f"[DIAG] Exception in handle_command: {e}")
+        logging.exception("[DIAG] Exception in handle_command")
         return {"error": str(e)}
 
 

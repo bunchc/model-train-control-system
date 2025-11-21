@@ -27,7 +27,7 @@ Typical usage:
 
 import logging
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 
 from api.client import APIRegistrationError, CentralAPIClient
 from config.loader import ConfigLoader, ConfigLoadError
@@ -110,7 +110,7 @@ class ConfigManager:
         self._service_config: Optional[dict[str, Any]] = None
         self._runtime_config: Optional[dict[str, Any]] = None
 
-    def initialize(self) -> Tuple[dict[str, Any], Optional[dict[str, Any]]]:
+    def initialize(self) -> tuple[dict[str, Any], Optional[dict[str, Any]]]:
         """Initialize and load both service and runtime configurations.
 
         This is the main entry point for configuration initialization. It orchestrates
@@ -183,7 +183,7 @@ class ConfigManager:
 
     def _use_cached_config_fallback(
         self,
-    ) -> Tuple[dict[str, Any], Optional[dict[str, Any]]]:
+    ) -> tuple[dict[str, Any], Optional[dict[str, Any]]]:
         """Fallback to cached config when API is unavailable.
 
         This method enables offline operation by using previously cached
@@ -221,7 +221,7 @@ class ConfigManager:
 
     def _refresh_existing_controller(
         self, cached_config: dict[str, Any]
-    ) -> Tuple[dict[str, Any], Optional[dict[str, Any]]]:
+    ) -> tuple[dict[str, Any], Optional[dict[str, Any]]]:
         """Refresh configuration for existing controller.
 
         Called when cached config contains a UUID, indicating this controller
@@ -268,9 +268,9 @@ class ConfigManager:
                 self.loader.save_runtime_config(fresh_config)
                 logger.info("Runtime config updated from central API")
                 return self._service_config, fresh_config
-            except ConfigLoadError as exc:
+            except ConfigLoadError:
                 # Save failed but we have fresh config in memory - continue anyway
-                logger.error(f"Failed to save fresh config: {exc}")
+                logger.exception("Failed to save fresh config")
                 # Fall through to cached config check
 
         # Download failed - validate cached config before using it
@@ -286,7 +286,7 @@ class ConfigManager:
 
     def _register_new_controller(
         self,
-    ) -> Tuple[dict[str, Any], Optional[dict[str, Any]]]:
+    ) -> tuple[dict[str, Any], Optional[dict[str, Any]]]:
         """Register as new controller with central API.
 
         Called when no cached UUID exists, indicating this is a first-time boot
@@ -342,9 +342,9 @@ class ConfigManager:
                 self.loader.save_runtime_config(runtime_config)
                 logger.info("Downloaded runtime config after registration")
                 return self._service_config, runtime_config
-            except ConfigLoadError as exc:
+            except ConfigLoadError:
                 # Save failed but we have config in memory - continue anyway
-                logger.error(f"Failed to save runtime config: {exc}")
+                logger.exception("Failed to save runtime config")
                 # Fall through to return None
 
         # Normal case: registered but admin hasn't assigned trains yet

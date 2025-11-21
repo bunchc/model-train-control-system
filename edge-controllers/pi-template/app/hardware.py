@@ -31,7 +31,7 @@ Typical usage:
     controller.turn_on_light(0)        # Light 0 on
 """
 
-from typing import List, Optional
+from typing import Optional
 
 from gpiozero import LED, DigitalInputDevice, PWMOutputDevice
 
@@ -57,7 +57,7 @@ class HardwareController:
         >>> occupied = controller.read_sensor(0)  # Track sensor
     """
 
-    def __init__(self, motor_pins: List[int], light_pins: List[int], sensor_pins: List[int]):
+    def __init__(self, motor_pins: list[int], light_pins: list[int], sensor_pins: list[int]):
         """Initialize hardware controller.
 
         Creates gpiozero device instances for all specified GPIO pins.
@@ -79,9 +79,9 @@ class HardwareController:
             >>> # Single motor on GPIO18, two lights on GPIO23/24
             >>> controller = HardwareController(motor_pins=[18], light_pins=[23, 24], sensor_pins=[])
         """
-        self.motors: List[PWMOutputDevice] = [PWMOutputDevice(pin) for pin in motor_pins]
-        self.lights: List[LED] = [LED(pin) for pin in light_pins]
-        self.sensors: List[DigitalInputDevice] = [DigitalInputDevice(pin) for pin in sensor_pins]
+        self.motors: list[PWMOutputDevice] = [PWMOutputDevice(pin) for pin in motor_pins]
+        self.lights: list[LED] = [LED(pin) for pin in light_pins]
+        self.sensors: list[DigitalInputDevice] = [DigitalInputDevice(pin) for pin in sensor_pins]
 
     def set_motor_speed(self, motor_index: int, speed: float) -> bool:
         """Set motor speed.

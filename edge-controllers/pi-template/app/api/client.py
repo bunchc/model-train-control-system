@@ -357,9 +357,9 @@ class CentralAPIClient:
             logger.info(f"Downloaded runtime config for UUID {controller_uuid}")
             return config_data
 
-        except RequestException as exc:
-            logger.error(f"Failed to download runtime config: {exc}")
+        except RequestException:
+            logger.exception("Failed to download runtime config")
             return None
-        except ValueError as exc:
-            logger.error(f"Invalid JSON in runtime config response: {exc}")
+        except ValueError:
+            logger.exception("Invalid JSON in runtime config response")
             return None

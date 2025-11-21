@@ -1,4 +1,4 @@
-"""context.py
+"""context.py.
 
 Configuration and runtime context management for the edge-controller service.
 
@@ -32,6 +32,9 @@ import time
 
 import requests
 import yaml
+
+
+logger = logging.getLogger(__name__)
 
 
 def is_central_api_accessible(service_config, retries=5, delay=2):
@@ -281,8 +284,8 @@ def download_runtime_config(uuid, service_config):
                 yaml.safe_dump(config_data, f)
             logging.info(f"Downloaded runtime config for UUID {uuid}")
             return True
-    except Exception as e:
-        logging.exception(f"Failed to download runtime config: {e}")
+    except Exception:
+        logger.exception("Failed to download runtime config")
     return False
 
 
@@ -340,8 +343,8 @@ def register_with_central_api(service_config):
                     f"Registered controller name={hostname}, address={ip_address}, uuid={uuid}, status={data.get('status')}"
                 )
                 return uuid
-    except Exception as e:
-        logging.exception(f"Failed to register: {e}")
+    except Exception:
+        logging.exception("Failed to register")
     return None
 
 

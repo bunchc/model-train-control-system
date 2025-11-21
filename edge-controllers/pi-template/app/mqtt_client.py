@@ -235,8 +235,8 @@ class MQTTClient:
                     logger.info(f"✓ Subscribed to topic: {self.commands_topic}")
                 else:
                     logger.error(f"✗ Failed to subscribe to {self.commands_topic}: {result}")
-            except Exception as exc:
-                logger.error(f"✗ Exception during subscription: {exc}")
+            except Exception:
+                logger.exception("✗ Exception during subscription")
         else:
             # Connection failed - translate MQTT error codes to human-readable messages
             error_messages = {
@@ -304,13 +304,13 @@ class MQTTClient:
             self.command_handler(command)
             logger.info("✓ Command handler completed")
 
-        except json.JSONDecodeError as exc:
+        except json.JSONDecodeError:
             # JSON parsing failed - malformed JSON from sender
-            logger.error(f"✗ Failed to parse command JSON: {exc}")
-            logger.error(f"Raw payload: {msg.payload}")
-        except Exception as exc:
+            logger.exception("✗ Failed to parse command JSON")
+            logger.exception(f"Raw payload: {msg.payload}")
+        except Exception:
             # Catch-all for any other errors to prevent MQTT loop crash
-            logger.error(f"Error handling command: {exc}")
+            logger.exception("Error handling command")
 
     def _on_disconnect(self, client: mqtt.Client, userdata: Any, return_code: int) -> None:
         """Callback for when client disconnects from broker.
@@ -377,13 +377,13 @@ class MQTTClient:
             logger.info("✓ MQTT client loop started (background thread)")
 
         except ConnectionRefusedError as exc:
-            logger.error(f"✗ Connection refused by broker: {exc}")
+            logger.exception("✗ Connection refused by broker")
             raise MQTTConnectionError(f"Connection refused: {exc}") from exc
         except OSError as exc:
-            logger.error(f"✗ Network error connecting to broker: {exc}")
+            logger.exception("✗ Network error connecting to broker")
             raise MQTTConnectionError(f"Network error: {exc}") from exc
         except Exception as exc:
-            logger.error(f"✗ Unexpected error starting MQTT client: {exc}")
+            logger.exception("✗ Unexpected error starting MQTT client")
             raise MQTTConnectionError(f"Failed to start MQTT client: {exc}") from exc
 
     def stop(self) -> None:
@@ -406,8 +406,8 @@ class MQTTClient:
             logger.info("✓ MQTT loop stopped")
             self.client.disconnect()
             logger.info("✓ MQTT client disconnected")
-        except Exception as exc:
-            logger.error(f"✗ Error stopping MQTT client: {exc}")
+        except Exception:
+            logger.exception("✗ Error stopping MQTT client")
 
     def publish_status(self, status: dict[str, Any]) -> None:
         """Publish train status to MQTT and optionally HTTP endpoint.
@@ -533,10 +533,10 @@ class MQTTClient:
                     f"Failed to push status to central API: {response.status_code} {response.text}"
                 )
 
-        except (RequestException, Timeout) as exc:
+        except (RequestException, Timeout):
             # Network error or timeout - log but don't fail
             # MQTT publish already succeeded, this is just supplementary
-            logger.error(f"Exception during HTTP push to central API: {exc}")
-        except Exception as exc:
+            logger.exception("Exception during HTTP push to central API")
+        except Exception:
             # Catch-all for unexpected errors
-            logger.error(f"Unexpected error during HTTP push: {exc}")
+            logger.exception("Unexpected error during HTTP push")

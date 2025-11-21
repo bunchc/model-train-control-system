@@ -172,11 +172,11 @@ class ConfigLoader:
 
             return config
 
-        except yaml.YAMLError as exc:
-            logger.error(f"Invalid YAML in cached config: {exc}")
+        except yaml.YAMLError:
+            logger.exception("Invalid YAML in cached config")
             return None
-        except OSError as exc:
-            logger.error(f"Failed to read cached config: {exc}")
+        except OSError:
+            logger.exception("Failed to read cached config")
             return None
 
     def save_runtime_config(self, config: dict[str, Any]) -> None:

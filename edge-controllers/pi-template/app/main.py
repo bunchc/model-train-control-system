@@ -22,7 +22,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 # Configuration management
 from config.manager import ConfigManager, ConfigurationError
@@ -147,12 +147,12 @@ class EdgeControllerApp:
             service_config, runtime_config = self.config_manager.initialize()
             logger.info("✓ Configuration manager initialized successfully")
 
-        except ConfigurationError as e:
+        except ConfigurationError:
             # Critical error - cannot proceed (service config missing or API unreachable with no cache)
-            logger.error("=" * 60)
-            logger.error("CRITICAL ERROR: Configuration initialization failed")
-            logger.error(f"Error: {e}")
-            logger.error("=" * 60)
+            logger.exception("=" * 60)
+            logger.exception("CRITICAL ERROR: Configuration initialization failed")
+            logger.exception("Configuration error")
+            logger.exception("=" * 60)
             return False
 
         # Check if we have runtime configuration
@@ -190,8 +190,8 @@ class EdgeControllerApp:
 
                 self.hardware_controller = StepperMotorHatController()
                 logger.info("✓ Hardware controller initialized (real hardware)")
-            except Exception as e:
-                logger.error(f"✗ Failed to initialize hardware controller: {e}")
+            except Exception:
+                logger.exception("✗ Failed to initialize hardware controller")
                 return False
         else:
             self.hardware_controller = StepperMotorSimulator()
@@ -228,12 +228,12 @@ class EdgeControllerApp:
             logger.info(f"✓ Subscribed to commands on: {commands_topic}")
             logger.info(f"✓ Publishing status to: {status_topic}")
 
-        except MQTTClientError as e:
+        except MQTTClientError:
             # MQTT connection failed - cannot proceed without real-time communication
-            logger.error("=" * 60)
-            logger.error("CRITICAL ERROR: MQTT connection failed")
-            logger.error(f"Error: {e}")
-            logger.error("=" * 60)
+            logger.exception("=" * 60)
+            logger.exception("CRITICAL ERROR: MQTT connection failed")
+            logger.exception("MQTT connection error")
+            logger.exception("=" * 60)
             return False
 
         logger.info("=" * 60)
@@ -241,7 +241,7 @@ class EdgeControllerApp:
         logger.info("=" * 60)
         return True
 
-    def _handle_command(self, command: Dict[str, Any]) -> None:
+    def _handle_command(self, command: dict[str, Any]) -> None:
         """Handle incoming MQTT command.
 
         This is the callback function registered with MQTTClient. It receives
@@ -269,7 +269,7 @@ class EdgeControllerApp:
         # Execute command on hardware
         self._execute_hardware_command(command)
 
-    def _execute_hardware_command(self, command: Dict[str, Any]) -> None:
+    def _execute_hardware_command(self, command: dict[str, Any]) -> None:
         """Execute command on hardware controller.
 
         This method translates MQTT command payloads into hardware controller
@@ -333,10 +333,10 @@ class EdgeControllerApp:
             else:
                 logger.warning(f"⚠ Unknown action: {action}")
 
-        except Exception as e:
+        except Exception:
             # Catch all hardware exceptions to prevent MQTT loop crash
             # Log error but allow controller to continue processing commands
-            logger.error(f"Hardware command execution failed: {e}")
+            logger.exception("Hardware command execution failed")
 
     def run(self) -> None:
         """Run the main application loop."""

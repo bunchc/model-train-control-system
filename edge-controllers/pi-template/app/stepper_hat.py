@@ -36,7 +36,6 @@ Typical usage:
 
 import logging
 import time
-from typing import List
 
 from gpiozero import OutputDevice
 
@@ -119,7 +118,7 @@ class StepperMotorHatController:
         self.enable: OutputDevice = OutputDevice(12)  # Enable/disable (active-low)
 
         # Microstepping mode configuration (3 pins for 6 modes)
-        self.mode_pins: List[OutputDevice] = [
+        self.mode_pins: list[OutputDevice] = [
             OutputDevice(16),  # MODE0
             OutputDevice(17),  # MODE1
             OutputDevice(20),  # MODE2
