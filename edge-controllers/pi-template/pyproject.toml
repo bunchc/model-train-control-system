@@ -20,7 +20,7 @@ dev = [
     "ruff==0.3.4",
     "mypy==1.9.0",
     "bandit==1.7.8",
-    "safety==3.1.0",
+    "safety==3.7.0",
     "types-requests==2.32.4.20250913",
     "types-pyyaml==6.0.12.20240311",
 ]
