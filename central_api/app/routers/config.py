@@ -16,8 +16,8 @@ import logging
 
 from fastapi import APIRouter, Body, HTTPException
 
-from models.schemas import EdgeController, FullConfig, Plugin, Train, TrainStatus
-from services.config_manager import ConfigManager
+from app.models.schemas import EdgeController, FullConfig, Plugin, Train, TrainStatus
+from app.services.config_manager import ConfigManager
 
 
 router = APIRouter()

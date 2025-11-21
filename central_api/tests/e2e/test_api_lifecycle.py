@@ -76,9 +76,22 @@ def client(
     monkeypatch.setenv("MQTT_BROKER_HOST", "localhost")
     monkeypatch.setenv("MQTT_BROKER_PORT", "1883")
 
-    # Create the test client
-    with TestClient(app) as test_client:
-        yield test_client
+    # Patch the ConfigManager to prevent it from loading at module import time
+    with patch("app.routers.config.ConfigManager") as mock_config_cls:
+        # Create a mock instance
+        mock_instance = MagicMock()
+        mock_config_cls.return_value = mock_instance
+
+        # Import after patching to prevent early initialization
+        import importlib
+
+        import app.routers.config as config_module
+
+        importlib.reload(config_module)
+
+        # Create the test client
+        with TestClient(app) as test_client:
+            yield test_client
 
 
 class TestAPILifecycle:

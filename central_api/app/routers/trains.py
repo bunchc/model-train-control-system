@@ -18,8 +18,8 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from models.schemas import Train, TrainStatus
-from services.mqtt_adapter import get_train_status, publish_command
+from app.models.schemas import Train, TrainStatus
+from app.services.mqtt_adapter import get_train_status, publish_command
 
 
 logger = logging.getLogger("central_api.routers.trains")

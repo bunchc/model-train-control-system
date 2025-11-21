@@ -23,12 +23,12 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from config import settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import config, trains
-from services.config_manager import ConfigManager, ConfigurationError
+from app.config import settings
+from app.routers import config, trains
+from app.services.config_manager import ConfigManager, ConfigurationError
 
 
 # Configure logging
