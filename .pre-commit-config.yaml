@@ -49,12 +49,12 @@ repos:
         args:
           - --fix
           - --exit-non-zero-on-fix
-        files: \.py$
+        files: ^(central_api|edge-controllers)/.*\.py$
 
       # Formatter
       - id: ruff-format
         name: Ruff Formatting
-        files: \.py$
+        files: ^(central_api|edge-controllers)/.*\.py$
 
   # ============================================================================
   # Security Scanning - Bandit
@@ -63,13 +63,22 @@ repos:
     rev: 1.7.8
     hooks:
       - id: bandit
-        name: Bandit Security Scan
+        name: Bandit Security Scan (Edge Controllers)
         args:
           - -c
           - edge-controllers/pi-template/pyproject.toml
           - -r
-        files: ^(central_api|edge-controllers)/.*\.py$
-        exclude: ^tests/
+        files: ^edge-controllers/.*\.py$
+        exclude: ^edge-controllers/.*/tests/
+
+      - id: bandit
+        name: Bandit Security Scan (Central API)
+        args:
+          - -c
+          - central_api/pyproject.toml
+          - -r
+        files: ^central_api/app/.*\.py$
+        exclude: ^central_api/tests/
 
   # ============================================================================
   # Secret Scanning - Gitleaks

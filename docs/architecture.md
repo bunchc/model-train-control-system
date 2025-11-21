@@ -54,6 +54,7 @@ The Edge Controller is a Python application that runs on Raspberry Pi devices to
 - **API Reference:** See [`docs/edge-controllers/AI_SPECS.md`](AI_SPECS.md)
 - **Troubleshooting:** See [Error Handling & Resilience](#error-handling--resilience)
 - **MQTT Topics:** See [`docs/mqtt-topics.md`](../mqtt-topics.md)
+- **Central API Documentation:** See [`central_api/docs/ARCHITECTURE.md`](../central_api/docs/ARCHITECTURE.md) and [`central_api/docs/AI_SPECS.md`](../central_api/docs/AI_SPECS.md)
 
 ---
 

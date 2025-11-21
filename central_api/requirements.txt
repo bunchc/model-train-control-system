@@ -1,6 +1,20 @@
-FastAPI
-uvicorn
-paho-mqtt
-pydantic
-httpx
-pyyaml
+# FastAPI and server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# HTTP client
+httpx==0.25.2
+
+# MQTT client
+paho-mqtt==1.6.1
+
+# Database
+# Note: SQLite is included in Python stdlib, no external package needed
+
+# YAML parsing
+PyYAML==6.0.1
+
+# Validation
+python-multipart==0.0.6

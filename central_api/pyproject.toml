@@ -1,0 +1,224 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "central-api"
+version = "0.1.0"
+description = "Central API for Model Train Control System"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi==0.104.1",
+    "uvicorn[standard]==0.24.0",
+    "pydantic==2.5.0",
+    "pydantic-settings==2.1.0",
+    "httpx==0.25.2",
+    "paho-mqtt==1.6.1",
+    "PyYAML==6.0.1",
+    "python-multipart==0.0.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.1.1",
+    "pytest-asyncio==0.23.6",
+    "pytest-cov==5.0.0",
+    "pytest-mock==3.14.0",
+    "ruff==0.3.4",
+    "mypy==1.9.0",
+    "types-PyYAML==6.0.12.20240311",
+    "bandit[toml]==1.7.8",
+    "safety==3.1.0",
+]
+
+# =============================================================================
+# Ruff Configuration
+# =============================================================================
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+# Enable specific rule sets
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "D",   # pydocstyle
+    "UP",  # pyupgrade
+    "N",   # pep8-naming
+    "S",   # flake8-bandit (security)
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "DTZ", # flake8-datetimez
+    "T10", # flake8-debugger
+    "EM",  # flake8-errmsg
+    "ISC", # flake8-implicit-str-concat
+    "ICN", # flake8-import-conventions
+    "PIE", # flake8-pie
+    "PT",  # flake8-pytest-style
+    "RET", # flake8-return
+    "SIM", # flake8-simplify
+    "ARG", # flake8-unused-arguments
+    "PTH", # flake8-use-pathlib
+    "PL",  # pylint
+    "TRY", # tryceratops
+    "RUF", # ruff-specific rules
+]
+
+# Ignore specific rules that conflict with our style
+ignore = [
+    "D100",   # Missing docstring in public module (we have module docstrings)
+    "D104",   # Missing docstring in public package
+    "D203",   # 1 blank line required before class docstring (conflicts with D211)
+    "D213",   # Multi-line docstring summary should start at the second line (conflicts with D212)
+    "S101",   # Use of assert detected (needed for pytest)
+    "TRY003", # Avoid specifying long messages outside exception class
+    "PLR0913", # Too many arguments to function call
+    "ISC001", # Conflicts with formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101",   # Allow assertions in tests
+    "D",      # Don't require docstrings in tests
+    "ARG001", # Allow unused function arguments in tests (fixtures)
+    "ARG002", # Allow unused method arguments in tests (mock objects from decorators)
+    "PT019",  # Allow fixtures without value (mock objects from @patch decorators)
+    "PLR2004", # Allow magic values in tests
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["central_api", "app", "models", "routers", "services"]
+force-single-line = false
+lines-after-imports = 2
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+# =============================================================================
+# Mypy Configuration
+# =============================================================================
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_unimported = false
+disallow_any_expr = false
+disallow_any_decorated = false
+disallow_any_explicit = false
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+show_error_codes = true
+
+# Allow untyped third-party packages
+[[tool.mypy.overrides]]
+module = [
+    "paho.*",
+    "yaml.*",
+]
+ignore_missing_imports = true
+
+# =============================================================================
+# Pytest Configuration
+# =============================================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "--cov=app",
+    "--cov-report=term-missing",
+]
+markers = [
+    "unit: Unit tests that mock all external dependencies",
+    "integration: Integration tests that test component interaction",
+    "e2e: End-to-end tests that simulate full system behavior",
+]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "tests/*",
+    "**/__pycache__/*",
+    "**/conftest.py",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+# =============================================================================
+# Bandit Security Configuration
+# =============================================================================
+[tool.bandit]
+# Exclude test directories from security scanning
+exclude_dirs = [
+    "tests",
+    ".venv",
+    "venv",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    "__pycache__",
+]
+
+# Skip specific tests that are too noisy or not applicable
+skips = [
+    "B101",  # Use of assert - We use asserts in production for critical checks
+    "B601",  # Shell injection - We don't use shell commands
+]
+
+# Confidence level for issues (LOW, MEDIUM, HIGH)
+# Only report MEDIUM and HIGH confidence issues
+confidence = "MEDIUM"
+
+# Severity level (LOW, MEDIUM, HIGH)
+# Only report MEDIUM and HIGH severity issues
+severity = "MEDIUM"

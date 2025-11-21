@@ -1,67 +1,70 @@
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+"""Pydantic models for API request/response validation.
+
+All models use strict type hints and field validation.
+"""
+
+from typing import Any, Optional
+
+from pydantic import BaseModel, Field
 
 
 class PluginConfig(BaseModel):
+    """Configuration for a hardware plugin."""
+
     i2c_address: Optional[str] = None
     port: Optional[int] = None
-    default_speed: Optional[int] = None
+    default_speed: Optional[int] = Field(None, ge=0, le=100)
     enabled: Optional[bool] = None
 
+
 class Plugin(BaseModel):
-    name: str
+    """Plugin definition with configuration."""
+
+    name: str = Field(..., min_length=1)
     description: Optional[str] = None
-    config: Dict[str, Any]
+    config: dict[str, Any] = Field(default_factory=dict)
+
 
 class TrainPlugin(BaseModel):
-    name: str
-    config: Dict[str, Any]
+    """Train-specific plugin configuration."""
+
+    name: str = Field(..., min_length=1)
+    config: dict[str, Any] = Field(default_factory=dict)
+
 
 class Train(BaseModel):
-    id: str
-    name: str
+    """Train configuration and assignment."""
+
+    id: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1)
     description: Optional[str] = None
     model: Optional[str] = None
     plugin: TrainPlugin
 
+
 class EdgeController(BaseModel):
-    id: str
-    name: str
+    """Edge controller configuration."""
+
+    id: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1)
     description: Optional[str] = None
     address: Optional[str] = None
     enabled: bool = True
-    trains: List[Train]
+    trains: list[Train] = Field(default_factory=list)
+
 
 class FullConfig(BaseModel):
-    plugins: List[Plugin]
-    edge_controllers: List[EdgeController]
+    """Complete system configuration."""
+
+    plugins: list[Plugin] = Field(default_factory=list)
+    edge_controllers: list[EdgeController] = Field(default_factory=list)
+
 
 class TrainStatus(BaseModel):
-    train_id: str
-    speed: int
-    voltage: float
-    current: float
-    position: str  # e.g., "section A", "section B"
+    """Real-time train telemetry."""
 
-
-class TrainPlugin(BaseModel):
-    name: str
-    config: Dict[str, Any]
-
-class Train(BaseModel):
-    id: str
-    name: str
-    description: Optional[str] = None
-    model: Optional[str] = None
-    plugin: TrainPlugin
-
-class EdgeController(BaseModel):
-    id: str
-    name: str
-    description: Optional[str] = None
-    address: Optional[str] = None
-    enabled: bool = True
-    trains: List[Train]
-
-# --- Added for OpenAPI alignment ---
-from typing import List, Dict
+    train_id: str = Field(..., min_length=1)
+    speed: int = Field(..., ge=0, le=100)
+    voltage: float = Field(..., ge=0)
+    current: float = Field(..., ge=0)
+    position: str = Field(..., min_length=1)
