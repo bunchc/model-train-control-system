@@ -2,7 +2,7 @@
 paho-mqtt==1.6.1
 
 # HTTP Client
-requests==2.31.0
+requests==2.32.5
 
 # Web Framework
 fastapi==0.121.3
