@@ -1,2 +1,0 @@
-This is a test file to verify workspace write and read access.
-Date: 12 November 2025
