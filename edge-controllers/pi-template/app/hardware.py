@@ -49,14 +49,10 @@ class HardwareController:
         sensors: List of DigitalInputDevice for binary sensors
 
     Example:
-        >>> controller = HardwareController(
-        ...     motor_pins=[18],
-        ...     light_pins=[23, 24],
-        ...     sensor_pins=[25]
-        ... )
+        >>> controller = HardwareController(motor_pins=[18], light_pins=[23, 24], sensor_pins=[25])
         >>> controller.set_motor_speed(0, 50)  # 50% speed
         True
-        >>> controller.turn_on_light(0)        # Front light on
+        >>> controller.turn_on_light(0)  # Front light on
         True
         >>> occupied = controller.read_sensor(0)  # Track sensor
     """
@@ -81,11 +77,7 @@ class HardwareController:
 
         Example:
             >>> # Single motor on GPIO18, two lights on GPIO23/24
-            >>> controller = HardwareController(
-            ...     motor_pins=[18],
-            ...     light_pins=[23, 24],
-            ...     sensor_pins=[]
-            ... )
+            >>> controller = HardwareController(motor_pins=[18], light_pins=[23, 24], sensor_pins=[])
         """
         self.motors: List[PWMOutputDevice] = [PWMOutputDevice(pin) for pin in motor_pins]
         self.lights: List[LED] = [LED(pin) for pin in light_pins]

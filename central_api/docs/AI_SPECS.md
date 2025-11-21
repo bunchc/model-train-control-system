@@ -826,7 +826,7 @@ def get_train(self, train_id: str) -> Optional[dict[str, Any]]:
 
 **Topic Structure:**
 
-```
+```text
 trains/{train_id}/commands     → Publish commands to edge controller
 trains/{train_id}/status       → Subscribe to status updates from edge controller
 trains/{train_id}/telemetry    → Subscribe to telemetry data (future)
@@ -1392,7 +1392,7 @@ async def test_full_train_command_flow(test_client, mqtt_broker_running):
 7. Update this AI_SPECS.md with endpoint specification
 8. Update OpenAPI schema documentation
 
-**Example: Add emergency stop endpoint**
+#### Example: Add emergency stop endpoint
 
 ```python
 # 1. Add model (if needed - in this case, using existing models)
@@ -1459,7 +1459,7 @@ def test_emergency_stop_publishes_mqtt_message(mqtt_adapter_mock):
 6. Update tests with new field
 7. Update this AI_SPECS.md
 
-**Example: Add max_speed to Train model**
+#### Example: Add max_speed to Train model
 
 ```python
 # 1. Update Pydantic model in app/models/schemas.py
@@ -1540,7 +1540,7 @@ except PublishError as exc:
 
 ### Production Requirements
 
-```
+```text
 fastapi==0.104.1          # Web framework
 pydantic==2.5.0           # Data validation
 pydantic-settings==2.1.0  # Settings management
@@ -1552,7 +1552,7 @@ pyyaml==6.0.1             # YAML parsing
 
 ### Development Requirements
 
-```
+```text
 ruff==0.3.4               # Linter and formatter
 mypy==1.9.0               # Static type checker
 pytest==8.1.1             # Testing framework
@@ -1570,12 +1570,14 @@ httpx==0.27.0             # TestClient for FastAPI
 ### 1. Python 3.9 Type Hints
 
 **❌ INCORRECT:**
+
 ```python
 def get_train(train_id: str) -> Train | None:  # Python 3.10+ syntax
     pass
 ```
 
 **✅ CORRECT:**
+
 ```python
 from typing import Optional
 
@@ -1588,6 +1590,7 @@ def get_train(train_id: str) -> Optional[Train]:  # Python 3.9 compatible
 ### 2. FastAPI Response Models
 
 **❌ INCORRECT:**
+
 ```python
 @router.get("/trains/{id}")
 async def get_train(id: str):  # Missing response_model
@@ -1595,6 +1598,7 @@ async def get_train(id: str):  # Missing response_model
 ```
 
 **✅ CORRECT:**
+
 ```python
 @router.get("/trains/{id}", response_model=Train)
 async def get_train(id: str) -> Train:
@@ -1609,6 +1613,7 @@ async def get_train(id: str) -> Train:
 ### 3. SQLite Transaction Handling
 
 **❌ INCORRECT:**
+
 ```python
 def add_train(self, train: Train):
     cursor = self.conn.execute("INSERT INTO trains ...")  # No transaction
@@ -1616,6 +1621,7 @@ def add_train(self, train: Train):
 ```
 
 **✅ CORRECT:**
+
 ```python
 def add_train(self, train: Train):
     with self.conn:  # Context manager handles commit/rollback
@@ -1627,11 +1633,13 @@ def add_train(self, train: Train):
 ### 4. MQTT Message Encoding
 
 **❌ INCORRECT:**
+
 ```python
 self.client.publish(topic, command)  # Passing dict directly
 ```
 
 **✅ CORRECT:**
+
 ```python
 import json
 payload = json.dumps(command)
@@ -1643,6 +1651,7 @@ self.client.publish(topic, payload)
 ### 5. Pydantic V2 Field Validation
 
 **❌ INCORRECT (Pydantic V1 syntax):**
+
 ```python
 from pydantic import BaseModel
 
@@ -1655,6 +1664,7 @@ class Train(BaseModel):
 ```
 
 **✅ CORRECT (Pydantic V2 syntax):**
+
 ```python
 from pydantic import BaseModel, Field
 
@@ -1671,6 +1681,7 @@ class Train(BaseModel):
 ### 6. Async vs Sync in FastAPI
 
 **❌ INCORRECT - Blocking call in async endpoint:**
+
 ```python
 @router.get("/trains")
 async def list_trains():
@@ -1680,6 +1691,7 @@ async def list_trains():
 ```
 
 **✅ CORRECT - Use sync endpoints for blocking operations:**
+
 ```python
 @router.get("/trains")
 def list_trains():  # Sync function, FastAPI runs in thread pool

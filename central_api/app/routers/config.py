@@ -257,6 +257,7 @@ def get_train_for_edge_controller(edge_controller_id: str, train_id: str):
 @router.get("/controllers/{controller_id}/ping")
 def ping_controller(controller_id: str):
     """Check if a controller exists in the system by UUID.
+
     Returns 200 if the controller is found, 404 otherwise.
     """
     logger.info(f"GET /controllers/{controller_id}/ping called")
@@ -296,11 +297,13 @@ def register_controller(
     # Add controller to database using ConfigManager
     try:
         config.add_edge_controller(new_uuid, name, address)
+    except Exception as e:
+        logger.exception("Failed to register controller")
+        msg = f"Failed to register controller: {e!s}"
+        raise HTTPException(status_code=500, detail=msg) from e
+    else:
         logger.info(f"Registered new controller: name={name}, uuid={new_uuid}, address={address}")
         return {"uuid": new_uuid, "name": name, "address": address, "status": "registered"}
-    except Exception as e:
-        logger.exception(f"Failed to register controller: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to register controller: {e!s}")
 
 
 @router.get("/controllers/{uuid}/config")

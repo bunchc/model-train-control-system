@@ -1,9 +1,9 @@
 
 # -----------------------------------------------------------------
 # PLUGIN DEFINITIONS
-# 
+#
 # Master library of all available plugins.
-# An edge controller will load any plugin 
+# An edge controller will load any plugin
 # referenced by one of its child trains.
 # -----------------------------------------------------------------
 
@@ -24,7 +24,7 @@ plugins:
 
 # -----------------------------------------------------------------
 # EDGE CONTROLLERS
-# 
+#
 # Main list of controllers. Each controller object contains
 # the list of trains it exclusively manages.
 # -----------------------------------------------------------------

@@ -43,7 +43,7 @@ config_manager: Optional[ConfigManager] = None
 
 
 @asynccontextmanager
-async def lifespan(app_instance: FastAPI):
+async def lifespan(_app: FastAPI):
     """Application lifespan manager for startup/shutdown.
 
     Handles configuration initialization and cleanup using async context manager.
@@ -68,7 +68,7 @@ async def lifespan(app_instance: FastAPI):
         # On shutdown: cleanup performed
         ```
     """
-    global config_manager
+    global config_manager  # noqa: PLW0603
 
     # Startup: Validate configuration exists and is readable
     try:
@@ -77,7 +77,7 @@ async def lifespan(app_instance: FastAPI):
                 f"Config file not found: {settings.config_yaml_path}. "
                 "Please mount config.yaml at the expected location."
             )
-            raise ConfigurationError(msg)
+            raise ConfigurationError(msg)  # noqa: TRY301
 
         logger.info(f"Loading configuration from {settings.config_yaml_path}")
         config_manager = ConfigManager(
@@ -87,7 +87,7 @@ async def lifespan(app_instance: FastAPI):
         logger.info("Configuration manager initialized successfully")
 
     except ConfigurationError as startup_error:
-        logger.exception(f"Startup failed: {startup_error}")
+        logger.exception("Startup failed")
         msg = f"Cannot start API: {startup_error}"
         raise RuntimeError(msg) from startup_error
 

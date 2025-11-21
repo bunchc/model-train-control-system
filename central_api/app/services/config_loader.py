@@ -63,15 +63,15 @@ class ConfigLoader:
                 msg = "Config file must contain a YAML dictionary"
                 raise ConfigLoadError(msg)
 
-            logger.info(f"Loaded configuration from {self.yaml_path}")
-            return config
-
         except yaml.YAMLError as yaml_error:
             msg = f"Invalid YAML syntax: {yaml_error}"
             raise ConfigLoadError(msg) from yaml_error
         except OSError as io_error:
             msg = f"Cannot read config file: {io_error}"
             raise ConfigLoadError(msg) from io_error
+        else:
+            logger.info(f"Loaded configuration from {self.yaml_path}")
+            return config
 
     def validate_config_structure(self, config: dict[str, Any]) -> None:
         """Validate configuration has required top-level keys and structure.

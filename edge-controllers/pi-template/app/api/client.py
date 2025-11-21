@@ -106,11 +106,7 @@ class CentralAPIClient:
 
     Example:
         >>> client = CentralAPIClient(
-        ...     host="central-api.local",
-        ...     port=8000,
-        ...     timeout=5,
-        ...     retry_delay=2,
-        ...     max_retries=3
+        ...     host="central-api.local", port=8000, timeout=5, retry_delay=2, max_retries=3
         ... )
         >>> if client.check_accessibility():
         ...     uuid = client.register_controller()

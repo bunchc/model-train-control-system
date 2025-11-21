@@ -70,6 +70,7 @@ repos:
           - -r
         files: ^edge-controllers/.*\.py$
         exclude: ^edge-controllers/.*/tests/
+        additional_dependencies: ["bandit[toml]"]
 
       - id: bandit
         name: Bandit Security Scan (Central API)
@@ -79,6 +80,7 @@ repos:
           - -r
         files: ^central_api/app/.*\.py$
         exclude: ^central_api/tests/
+        additional_dependencies: ["bandit[toml]"]
 
   # ============================================================================
   # Secret Scanning - Gitleaks

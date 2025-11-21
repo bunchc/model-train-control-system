@@ -10,7 +10,7 @@ import yaml
 from config.manager import ConfigManager
 
 
-@pytest.mark.integration
+@pytest.mark.integration()
 class TestConfigIntegration:
     """Integration tests for config loading and management."""
 

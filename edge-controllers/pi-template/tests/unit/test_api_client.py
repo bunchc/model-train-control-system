@@ -8,11 +8,11 @@ import requests
 from api.client import CentralAPIClient
 
 
-@pytest.mark.unit
+@pytest.mark.unit()
 class TestCentralAPIClient:
     """Tests for CentralAPIClient class."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def api_client(self) -> CentralAPIClient:
         """Create API client instance."""
         return CentralAPIClient(host="localhost", port=8000, timeout=1, max_retries=2)

@@ -78,6 +78,7 @@ docker-compose logs -f central_api
 ## API Documentation
 
 Once running, visit:
+
 - **Swagger UI:** http://localhost:8000/docs
 - **ReDoc:** http://localhost:8000/redoc
 - **OpenAPI JSON:** http://localhost:8000/openapi.json
@@ -201,7 +202,7 @@ make coverage
 
 ### Project Structure
 
-```
+```text
 central_api/
 ├── app/
 │   ├── main.py              # FastAPI application entry point
@@ -235,6 +236,7 @@ central_api/
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture documentation.
 
 **Key Components:**
+
 - **FastAPI App** - REST API with lifespan events
 - **ConfigManager** - Facade orchestrating config loading and database
 - **ConfigRepository** - Repository pattern for database operations
@@ -242,6 +244,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture docum
 - **Pydantic Models** - Type-safe request/response validation
 
 **Data Flow:**
+
 1. Frontend → REST API → ConfigManager → Database
 2. REST API → MQTTAdapter → Edge Controller
 3. Edge Controller → MQTT → Central API → Database
@@ -250,7 +253,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture docum
 
 ### Topic Structure
 
-```
+```text
 trains/{train_id}/commands     → Publish commands to edge controllers
 trains/{train_id}/status       → Subscribe to status updates
 trains/{train_id}/telemetry    → Subscribe to telemetry data
@@ -259,6 +262,7 @@ trains/{train_id}/telemetry    → Subscribe to telemetry data
 ### Message Formats
 
 **Command Message:**
+
 ```json
 {
   "action": "setSpeed",
@@ -268,6 +272,7 @@ trains/{train_id}/telemetry    → Subscribe to telemetry data
 ```
 
 **Status Message:**
+
 ```json
 {
   "train_id": "train-001",
@@ -304,20 +309,24 @@ See [../docs/mqtt-topics.md](../docs/mqtt-topics.md) for complete topic specific
 ### Common Issues
 
 **Issue: `ConfigurationError: Failed to initialize ConfigManager`**
+
 - Check that `config.yaml` exists and is valid YAML
 - Verify `config_schema.sql` is present
 - Check file permissions
 
-**Issue: MQTT connection refused**
+#### Issue: MQTT connection refused
+
 - Verify MQTT broker is running (`docker-compose ps`)
 - Check `MQTT_BROKER_HOST` environment variable
 - Confirm broker port (default 1883)
 
-**Issue: Database locked**
+#### Issue: Database locked
+
 - SQLite is single-writer - ensure no concurrent writes
 - Consider upgrading to PostgreSQL for production
 
-**Issue: Tests failing**
+#### Issue: Tests failing
+
 - Check Python version (3.9+ required)
 - Verify all dependencies installed (`pip install -r requirements.txt`)
 - Ensure no other instance running on port 8000

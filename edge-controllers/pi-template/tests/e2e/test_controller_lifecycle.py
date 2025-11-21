@@ -10,11 +10,11 @@ import yaml
 from main import EdgeControllerApp
 
 
-@pytest.mark.e2e
+@pytest.mark.e2e()
 class TestControllerLifecycle:
     """End-to-end tests for complete controller lifecycle."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def setup_environment(
         self, temp_config_dir: Path, mock_runtime_config: dict[str, Any]
     ) -> tuple[Path, Path]:

@@ -9,7 +9,7 @@ import yaml
 from config.loader import ConfigLoader, ConfigLoadError
 
 
-@pytest.mark.unit
+@pytest.mark.unit()
 class TestConfigLoader:
     """Tests for ConfigLoader class."""
 

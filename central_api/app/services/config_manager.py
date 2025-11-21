@@ -87,7 +87,7 @@ class ConfigManager:
             self.loader.validate_config_structure(config)
             self._bootstrap_from_yaml(config)
         except ConfigLoadError as load_error:
-            logger.exception(f"Configuration initialization failed: {load_error}")
+            logger.exception("Configuration initialization failed")
             msg = f"Cannot load configuration: {load_error}"
             raise ConfigurationError(msg) from load_error
 
@@ -123,8 +123,8 @@ class ConfigManager:
                     self.repository.add_edge_controller(
                         controller_id, controller_name, controller_address
                     )
-                except Exception as add_error:
-                    logger.exception(f"Failed to add controller {controller_name}: {add_error}")
+                except Exception:
+                    logger.exception(f"Failed to add controller {controller_name}")
 
         logger.info("Configuration bootstrap complete")
 
@@ -172,11 +172,12 @@ class ConfigManager:
 
         try:
             self.repository.add_edge_controller(controller_uuid, name, address)
-            logger.info(f"Registered controller: {name} -> {controller_uuid}")
-            return controller_uuid
         except Exception as registration_error:
             msg = f"Failed to register controller: {registration_error}"
             raise ConfigurationError(msg) from registration_error
+        else:
+            logger.info(f"Registered controller: {name} -> {controller_uuid}")
+            return controller_uuid
 
     def get_full_config(self) -> FullConfig:
         """Retrieve complete system configuration.

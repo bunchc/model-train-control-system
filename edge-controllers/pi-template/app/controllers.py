@@ -35,6 +35,7 @@ Typical usage:
     # Check status
     GET http://edge-controller:8080/status
 """
+
 import logging
 
 from fastapi import APIRouter
@@ -64,6 +65,7 @@ class Command(BaseModel):
         >>> # Set speed command
         >>> cmd = Command(speed=50)
     """
+
     speed: int = None
     action: str = None
 
@@ -195,7 +197,7 @@ async def get_status():
         - position: Current position/state
 
     Example:
-        >>> GET /status
+        >>> GET / status
         {
             "train_id": "1",
             "speed": 50,

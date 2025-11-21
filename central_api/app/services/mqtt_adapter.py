@@ -140,15 +140,17 @@ def publish_command(train_id, command):
         topic = f"trains/{train_id}/commands"
         payload = json.dumps(command.dict()) if hasattr(command, "dict") else json.dumps(command)
         adapter.publish(topic, payload)
+    except Exception:
+        logger.exception("MQTT publish error")
+        return False
+    else:
         logger.info(f"Command published for train {train_id}")
         return True
-    except Exception as e:
-        logger.exception(f"MQTT publish error: {e}")
-        return False
 
 
 def get_train_status(train_id, local_testing=False):
     """Retrieve the real-time status of a train via MQTT.
+
     If local_testing is True, returns mock data for development.
     """
     from models.schemas import TrainStatus
@@ -162,7 +164,7 @@ def get_train_status(train_id, local_testing=False):
     result = {}
     received = False
 
-    def on_message(client, userdata, msg):
+    def on_message(_client, _userdata, msg):
         nonlocal received
         try:
             payload = json.loads(msg.payload.decode())
@@ -174,8 +176,8 @@ def get_train_status(train_id, local_testing=False):
             result.update(payload)
             received = True
             logger.debug(f"Received status message: {payload}")
-        except Exception as e:
-            logger.exception(f"Error decoding MQTT status: {e}")
+        except Exception:
+            logger.exception("Error decoding MQTT status")
 
     adapter = MQTTAdapter(broker_address="mqtt", train_id=train_id)
     try:

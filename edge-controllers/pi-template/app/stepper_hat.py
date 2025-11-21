@@ -114,15 +114,15 @@ class StepperMotorHatController:
 
         # Initialize GPIO pins for DRV8825 stepper driver
         # Using BCM pin numbering (GPIO numbers, not physical pin numbers)
-        self.dir: OutputDevice = OutputDevice(13)    # Direction control
-        self.step: OutputDevice = OutputDevice(19)   # Step pulse (PWM-capable pin)
-        self.enable: OutputDevice = OutputDevice(12) # Enable/disable (active-low)
+        self.dir: OutputDevice = OutputDevice(13)  # Direction control
+        self.step: OutputDevice = OutputDevice(19)  # Step pulse (PWM-capable pin)
+        self.enable: OutputDevice = OutputDevice(12)  # Enable/disable (active-low)
 
         # Microstepping mode configuration (3 pins for 6 modes)
         self.mode_pins: List[OutputDevice] = [
             OutputDevice(16),  # MODE0
             OutputDevice(17),  # MODE1
-            OutputDevice(20)   # MODE2
+            OutputDevice(20),  # MODE2
         ]
 
         # Initialize state

@@ -10,7 +10,7 @@ import pytest
 import yaml
 
 
-@pytest.fixture
+@pytest.fixture()
 def temp_config_dir() -> Generator[Path, None, None]:
     """Create a temporary directory for config files.
 
@@ -21,7 +21,7 @@ def temp_config_dir() -> Generator[Path, None, None]:
         yield Path(tmpdir)
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_service_config(temp_config_dir: Path) -> dict[str, Any]:
     """Create a mock service configuration.
 
@@ -43,7 +43,7 @@ def mock_service_config(temp_config_dir: Path) -> dict[str, Any]:
     return config
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_runtime_config() -> dict[str, Any]:
     """Create a mock runtime configuration.
 
@@ -64,7 +64,7 @@ def mock_runtime_config() -> dict[str, Any]:
     }
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_mqtt_client() -> MagicMock:
     """Create a mock MQTT client.
 
@@ -77,7 +77,7 @@ def mock_mqtt_client() -> MagicMock:
     return mock_client
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_hardware_controller() -> MagicMock:
     """Create a mock hardware controller.
 

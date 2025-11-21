@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     """
 
     # API Configuration
-    api_host: str = Field(default="0.0.0.0", env="API_HOST")
+    api_host: str = Field(default="0.0.0.0", env="API_HOST")  # nosec B104
     api_port: int = Field(default=8000, env="API_PORT", ge=1, le=65535)
 
     # Configuration Paths
@@ -56,8 +56,8 @@ def get_settings() -> Settings:
     """
     try:
         return Settings()
-    except ValidationError as validation_error:
-        logger.exception(f"Configuration validation failed: {validation_error}")
+    except ValidationError:
+        logger.exception("Configuration validation failed")
         raise
 
 

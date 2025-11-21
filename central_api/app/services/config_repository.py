@@ -145,7 +145,7 @@ class ConfigRepository:
 
             if updates:
                 params.append(controller_id)
-                query = f"UPDATE edge_controllers SET {', '.join(updates)} WHERE id = ?"
+                query = f"UPDATE edge_controllers SET {', '.join(updates)} WHERE id = ?"  # nosec B608
                 conn.execute(query, params)
                 conn.commit()
                 logger.info(f"Updated edge controller: {controller_id}")
@@ -278,7 +278,8 @@ class ConfigRepository:
         conn.row_factory = sqlite3.Row
         try:
             cursor = conn.execute(
-                "SELECT train_id, speed, voltage, current, position FROM train_status WHERE train_id = ?",
+                "SELECT train_id, speed, voltage, current, position "
+                "FROM train_status WHERE train_id = ?",
                 (train_id,),
             )
             row = cursor.fetchone()
