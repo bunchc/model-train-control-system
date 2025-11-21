@@ -1,15 +1,19 @@
 ### Issue
+
 Integrate real train status endpoint with actual MQTT and hardware responses.
+
 - Background/context: The current `/api/trains/{train_id}/status` endpoint returns mock data. It should query the edge controller via MQTT and return live telemetry.
 - Expected outcome: The endpoint returns real-time status for any train, matching the OpenAPI schema.
 
 ### Definition of Done
+
 - [ ] Code implemented and reviewed
 - [ ] Tests written/passed
 - [ ] Documentation updated
 - [ ] Stakeholder approval received
 
 ### Verification
+
 - Steps to test or validate:
   - Deploy edge controller and central API locally.
   - Send status request to `/api/trains/{train_id}/status`.
@@ -19,6 +23,7 @@ Integrate real train status endpoint with actual MQTT and hardware responses.
   - [ ] Verify no regressions in related components
 
 ### Notes (optional)
+
 - See docs/mqtt-topics.md for topic conventions.
 - Reference edge-controllers/pi-template/app/mqtt_client.py for status publishing.
 

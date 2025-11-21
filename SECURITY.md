@@ -81,7 +81,7 @@ This project uses multiple automated security tools:
 
 For production deployments, ensure the following headers are set:
 
-```
+```text
 Strict-Transport-Security: max-age=31536000; includeSubDomains
 X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
@@ -180,10 +180,12 @@ This project follows industry-standard security practices:
 ## Contact
 
 For security concerns:
+
 - Use GitHub Security Advisories
 - Contact repository maintainers
 
 For general questions:
+
 - Use GitHub Discussions
 - Open a regular issue (for non-security topics)
 

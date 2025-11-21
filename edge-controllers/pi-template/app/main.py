@@ -128,18 +128,24 @@ class EdgeControllerApp:
         """
         # Initialize configuration
         try:
+            # Locate config files relative to this script
             config_path = Path(__file__).parent / "edge-controller.conf"
             cached_config_path = Path(__file__).parent / "edge-controller.yaml"
 
+            # Load service config and download/cache runtime config
             self.config_manager = ConfigManager(config_path, cached_config_path)
             service_config, runtime_config = self.config_manager.initialize()
 
         except ConfigurationError as e:
+            # Critical error - cannot proceed (service config missing or API unreachable with no cache)
             logger.error(f"Configuration initialization failed: {e}")
             return False
 
         # Check if we have runtime configuration
+        # runtime_config will be None if controller is registered but not assigned to a train
         if runtime_config is None:
+            # Valid state: Controller is registered but waiting for admin to assign trains
+            # In production, implement a polling loop to check for config updates
             logger.warning("=" * 60)
             logger.warning("Edge controller registered but no train configuration available.")
             logger.warning("Waiting for administrator to assign trains to this controller.")
@@ -169,26 +175,31 @@ class EdgeControllerApp:
 
         # Initialize MQTT client
         try:
+            # Construct Central API URL for HTTP fallback (status publishing)
             central_api_host = service_config.get("central_api_host", "localhost")
             central_api_port = service_config.get("central_api_port", 8000)
             central_api_url = f"http://{central_api_host}:{central_api_port}"
 
+            # Create MQTT client with connection details from runtime config
             self.mqtt_client = MQTTClient(
                 broker_host=mqtt_broker.get("host", "localhost"),
                 broker_port=mqtt_broker.get("port", 1883),
                 train_id=self.train_id,
-                status_topic=status_topic,
-                commands_topic=commands_topic,
-                command_handler=self._handle_command,
-                username=mqtt_broker.get("username"),
-                password=mqtt_broker.get("password"),
-                central_api_url=central_api_url,
+                status_topic=status_topic,  # Publish: trains/{train_id}/status
+                commands_topic=commands_topic,  # Subscribe: trains/{train_id}/commands
+                command_handler=self._handle_command,  # Callback for incoming commands
+                username=mqtt_broker.get("username"),  # Optional authentication
+                password=mqtt_broker.get("password"),  # Optional authentication
+                central_api_url=central_api_url,  # HTTP fallback for status
             )
 
+            # Connect to broker and subscribe to commands topic
+            # This is blocking until connection succeeds or timeout
             self.mqtt_client.start()
             logger.info("MQTT client started successfully")
 
         except MQTTClientError as e:
+            # MQTT connection failed - cannot proceed without real-time communication
             logger.error(f"Failed to start MQTT client: {e}")
             return False
 
@@ -248,28 +259,42 @@ class EdgeControllerApp:
         Example:
             >>> self._execute_hardware_command({'action': 'start', 'speed': 60})
             # Logs: "Started motor at speed 60"
+
+        Note:
+            Command routing follows a simple if/elif chain for clarity.
+            More complex routing would use command pattern or strategy pattern.
         """
+        # Extract action from command payload
         action = command.get("action")
 
+        # Execute hardware action with exception isolation
+        # Each exception is caught to prevent MQTT callback failures
         try:
+            # Command: start motor at specified speed
             if action == "start":
-                speed = command.get("speed", 50)
+                speed = command.get("speed", 50)  # Default to 50% if not specified
                 self.hardware_controller.start(speed)
                 logger.info(f"Started motor at speed {speed}")
 
+            # Command: stop motor immediately
             elif action == "stop":
                 self.hardware_controller.stop()
                 logger.info("Stopped motor")
 
+            # Command: change speed without stopping
             elif action == "setSpeed":
-                speed = command.get("speed", 50)
+                speed = command.get("speed", 50)  # Default to 50% if not specified
                 self.hardware_controller.set_speed(speed)
                 logger.info(f"Set speed to {speed}")
 
+            # Unknown action - log warning but don't fail
+            # This allows for future command types without code changes
             else:
                 logger.warning(f"Unknown action: {action}")
 
         except Exception as e:
+            # Catch all hardware exceptions to prevent MQTT loop crash
+            # Log error but allow controller to continue processing commands
             logger.error(f"Hardware command execution failed: {e}")
 
     def run(self) -> None:

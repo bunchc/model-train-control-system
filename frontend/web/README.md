@@ -7,12 +7,14 @@ This directory contains the frontend web application for the Model Train Control
 To get started with the frontend application, follow these steps:
 
 1. **Install Dependencies**: Make sure you have Node.js installed. Then, navigate to this directory and run:
-   ```
+
+   ```bash
    npm install
    ```
 
 2. **Run the Application**: After installing the dependencies, you can start the development server with:
-   ```
+
+   ```bash
    npm start
    ```
 

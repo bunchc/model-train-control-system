@@ -47,17 +47,22 @@ This file highlights the concrete, discoverable patterns and entry points an AI 
    - Publish command from API: central API calls into `publish_command(train_id, command)` in `central_api/app/services/mqtt_adapter.py`.
    - Frontend publishes user actions via `fetch('/api/trains/{id}/command', { method: 'POST', body: JSON.stringify(...) })` and listens to `trains/+/status` in `frontend/web/src/services/mqtt.ts`.
 
-    - Example MQTT payloads (copy/paste-ready):
-       - Command (topic: `trains/1/commands`):
+   - Example MQTT payloads (copy/paste-ready):
+      - Command (topic: `trains/1/commands`):
+
           ```json
           { "action": "setSpeed", "speed": 50 }
           ```
-       - Start/Stop (topic: `trains/1/commands`):
+
+      - Start/Stop (topic: `trains/1/commands`):
+
           ```json
           { "action": "start" }
           { "action": "stop" }
           ```
-       - Status update (topic: `trains/1/status`):
+
+      - Status update (topic: `trains/1/status`):
+
           ```json
           {
              "train_id": "1",

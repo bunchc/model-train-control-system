@@ -6,7 +6,7 @@ This document outlines the MQTT topics used in the model train control system, d
 
 The MQTT topics follow a hierarchical structure to facilitate organization and clarity. The general format is:
 
-```
+```text
 trains/{train_id}/{action}
 ```
 
@@ -16,6 +16,7 @@ trains/{train_id}/{action}
    - **Topic:** `trains/{train_id}/commands`
    - **Description:** This topic is used to send control commands to a specific train. Commands can include actions such as starting, stopping, and setting speed.
    - **Example Payload:**
+
      ```json
      {
        "action": "start"
@@ -26,6 +27,7 @@ trains/{train_id}/{action}
    - **Topic:** `trains/{train_id}/status`
    - **Description:** This topic is used to publish the current status and telemetry data of a specific train. It includes information such as speed, voltage, and position.
    - **Example Payload:**
+
      ```json
      {
        "speed": 50,
@@ -38,6 +40,7 @@ trains/{train_id}/{action}
    - **Topic:** `trains/discovery`
    - **Description:** This topic is used for broadcasting the presence of a new train in the system. When a new train connects, it publishes its information to this topic.
    - **Example Payload:**
+
      ```json
      {
        "train_id": "1",
@@ -49,6 +52,7 @@ trains/{train_id}/{action}
    - **Topic:** `trains/{train_id}/config`
    - **Description:** This topic is used to send configuration updates to a specific train. This can include changes to operational parameters or settings.
    - **Example Payload:**
+
      ```json
      {
        "max_speed": 100,

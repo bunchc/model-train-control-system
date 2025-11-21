@@ -107,16 +107,34 @@ class StepperMotorHatController:
         Note:
             Due to singleton pattern, this only initializes GPIO on first call.
         """
+        # Check if already initialized (singleton pattern)
+        # __new__ sets _initialized to False on first instantiation
         if getattr(self, "_initialized", False):
-            return
+            return  # Already initialized, skip GPIO setup
 
-        self.dir: OutputDevice = OutputDevice(13)
-        self.step: OutputDevice = OutputDevice(19)
-        self.enable: OutputDevice = OutputDevice(12)
-        self.mode_pins: List[OutputDevice] = [OutputDevice(16), OutputDevice(17), OutputDevice(20)]
+        # Initialize GPIO pins for DRV8825 stepper driver
+        # Using BCM pin numbering (GPIO numbers, not physical pin numbers)
+        self.dir: OutputDevice = OutputDevice(13)    # Direction control
+        self.step: OutputDevice = OutputDevice(19)   # Step pulse (PWM-capable pin)
+        self.enable: OutputDevice = OutputDevice(12) # Enable/disable (active-low)
+
+        # Microstepping mode configuration (3 pins for 6 modes)
+        self.mode_pins: List[OutputDevice] = [
+            OutputDevice(16),  # MODE0
+            OutputDevice(17),  # MODE1
+            OutputDevice(20)   # MODE2
+        ]
+
+        # Initialize state
         self.enabled: bool = False
+
+        # Configure default operating mode (full step for maximum torque)
         self.set_full_step()
+
+        # Disable motor initially (de-energize coils to save power)
         self.stop()
+
+        # Mark as initialized to prevent repeated GPIO setup
         self._initialized = True
 
     def set_full_step(self) -> None:
@@ -252,13 +270,21 @@ class StepperMotorHatController:
             >>> controller.set_direction(1)
             >>> controller.run_steps(speed=50, steps=400)  # Two revolutions
         """
-        # speed: 1-100, map to delay between steps
+        # Calculate delay between step pulses based on desired speed
+        # Formula maps speed 1-100 to delay 19ms-1ms (inverse relationship)
+        # min() ensures we never go below 1ms (motor mechanical limit)
         delay = max(0.001, 0.02 - (speed / 5000.0))
+
+        # Generate step pulses - each HIGH/LOW cycle is one step
         for _ in range(steps):
+            # Rising edge of STEP pin triggers DRV8825 to advance one step
             self.step.on()
-            time.sleep(delay)
+            time.sleep(delay)  # Hold HIGH for timing (driver needs ~1µs minimum)
+
+            # Falling edge completes the pulse
             self.step.off()
-            time.sleep(delay)
+            time.sleep(delay)  # Wait before next pulse (prevents motor stall)
+
         logger.debug(f"Ran {steps} steps at speed {speed}")
 
     def set_speed(self, speed: int) -> None:

@@ -1,0 +1,20 @@
+{
+  "name": "model-train-control-system",
+  "version": "0.1.0",
+  "description": "Distributed model train control system with edge controllers and central orchestration",
+  "private": true,
+  "scripts": {
+    "lint:md": "markdownlint-cli2 '**/*.md' '#node_modules' '#.venv' '#venv' '#htmlcov' '#.pytest_cache' '#.ruff_cache'",
+    "lint:md:fix": "markdownlint-cli2 --fix '**/*.md' '#node_modules' '#.venv' '#venv' '#htmlcov' '#.pytest_cache' '#.ruff_cache'",
+    "lint:links": "find . -name '*.md' ! -path '*/node_modules/*' ! -path '*/.venv/*' ! -path '*/venv/*' -exec markdown-link-check --config .markdown-link-check.json {} \\;",
+    "lint:all": "npm run lint:md && npm run lint:links"
+  },
+  "devDependencies": {
+    "markdownlint-cli2": "^0.11.0",
+    "markdown-link-check": "^3.11.2"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=7.0.0"
+  }
+}

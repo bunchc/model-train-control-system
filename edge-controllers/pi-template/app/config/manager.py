@@ -149,27 +149,36 @@ class ConfigManager:
         """
         # Load service config
         try:
+            # Step 1: Load service config from filesystem (edge-controller.conf)
+            # This file must exist and contain central_api_host/port - no fallback
             self._service_config = self.loader.load_service_config()
         except ConfigLoadError as exc:
+            # Terminal error: cannot proceed without knowing where Central API is
             raise ConfigurationError(f"Failed to load service config: {exc}") from exc
 
         # Initialize API client
+        # Extract API connection details from service config
         api_host = self._service_config.get("central_api_host", "localhost")
         api_port = self._service_config.get("central_api_port", 8000)
         self.api_client = CentralAPIClient(host=api_host, port=api_port)
 
         # Check API accessibility
+        # State decision: ONLINE path (API accessible) vs OFFLINE path (use cache)
         if not self.api_client.check_accessibility():
             logger.warning("Central API not accessible, attempting to use cached config")
+            # OFFLINE PATH: API unreachable, try cached config
             return self._use_cached_config_fallback()
 
+        # ONLINE PATH: API is accessible, proceed with registration or refresh
         # Try to load and use existing config
         cached_config = self.loader.load_cached_runtime_config()
 
+        # State decision: Existing controller (has UUID) vs new controller (no UUID)
         if cached_config and "uuid" in cached_config:
+            # EXISTING CONTROLLER: Refresh config from API using cached UUID
             return self._refresh_existing_controller(cached_config)
 
-        # No cached config - register as new controller
+        # NEW CONTROLLER: No cached config - register as new controller
         return self._register_new_controller()
 
     def _use_cached_config_fallback(
@@ -244,25 +253,34 @@ class ConfigManager:
             This method never raises exceptions. All errors are logged and
             handled gracefully by falling back to cached config or returning None.
         """
+        # Extract UUID from cached config (controller was registered previously)
         controller_uuid = cached_config["uuid"]
         logger.info(f"Found cached config with UUID {controller_uuid}")
 
-        # Try to download fresh config
+        # Try to download fresh config from API
+        # This ensures we have latest train assignments, MQTT broker updates, etc.
         fresh_config = self.api_client.download_runtime_config(controller_uuid)
 
+        # Download successful - save to cache and return fresh config
         if fresh_config:
             try:
+                # Persist to disk so we have fallback if API becomes unavailable
                 self.loader.save_runtime_config(fresh_config)
                 logger.info("Runtime config updated from central API")
                 return self._service_config, fresh_config
             except ConfigLoadError as exc:
+                # Save failed but we have fresh config in memory - continue anyway
                 logger.error(f"Failed to save fresh config: {exc}")
+                # Fall through to cached config check
 
-        # Download failed - use cached if it has required fields
+        # Download failed - validate cached config before using it
+        # Cached config may be stale but is better than not starting
         if self._is_runtime_config_complete(cached_config):
             logger.warning("Using cached runtime config (download failed)")
             return self._service_config, cached_config
 
+        # Cached config is incomplete (missing train_id or mqtt_broker)
+        # Controller is registered but admin hasn't assigned trains yet
         logger.warning("Cached config incomplete, running without train config")
         return self._service_config, None
 
@@ -305,23 +323,32 @@ class ConfigManager:
         """
         logger.info("No cached UUID found, registering with central API")
 
+        # Step 1: Register with Central API to get UUID
+        # Sends hostname and IP address to help admin identify this controller
         try:
             controller_uuid = self.api_client.register_controller()
         except APIRegistrationError as exc:
+            # Registration failed - terminal error, cannot proceed without UUID
             raise ConfigurationError(f"Failed to register with central API: {exc}") from exc
 
-        # Try to download runtime config
+        # Step 2: Try to download runtime config using new UUID
+        # Admin may have pre-configured this controller, or it may return 404
         runtime_config = self.api_client.download_runtime_config(controller_uuid)
 
+        # Config available - admin pre-configured train assignment
         if runtime_config:
             try:
+                # Save to cache for offline operation and future refreshes
                 self.loader.save_runtime_config(runtime_config)
                 logger.info("Downloaded runtime config after registration")
                 return self._service_config, runtime_config
             except ConfigLoadError as exc:
+                # Save failed but we have config in memory - continue anyway
                 logger.error(f"Failed to save runtime config: {exc}")
+                # Fall through to return None
 
         # Normal case: registered but admin hasn't assigned trains yet
+        # Controller enters wait state - will poll for config updates
         logger.info(
             "Registered successfully but no runtime config available yet. "
             "Waiting for administrator to assign trains to this controller."

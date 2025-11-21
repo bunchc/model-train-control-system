@@ -219,11 +219,15 @@ class MQTTClient:
             - Subscribes to commands_topic if return_code == 0
             - Logs connection status at INFO or ERROR level
         """
+        # Check connection result code (0 = success)
         if return_code == 0:
             logger.info(f"Connected to MQTT broker at {self.broker_host}:{self.broker_port}")
 
+            # Automatically subscribe to commands topic on successful connection
+            # This ensures we receive commands even after reconnection
             try:
                 result = client.subscribe(self.commands_topic)
+                # result is tuple: (result_code, message_id)
                 if result[0] == mqtt.MQTT_ERR_SUCCESS:
                     logger.info(f"Subscribed to topic: {self.commands_topic}")
                 else:
@@ -231,6 +235,7 @@ class MQTTClient:
             except Exception as exc:
                 logger.error(f"Exception during subscription: {exc}")
         else:
+            # Connection failed - translate MQTT error codes to human-readable messages
             error_messages = {
                 1: "Connection refused - incorrect protocol version",
                 2: "Connection refused - invalid client identifier",
@@ -272,20 +277,28 @@ class MQTTClient:
             operations in command_handler may block message processing.
         """
         try:
+            # Step 1: Decode raw bytes to UTF-8 string
             payload = msg.payload.decode("utf-8")
             logger.info(f"Received message on {msg.topic}: {payload}")
 
+            # Step 2: Parse JSON string to Python dict
             command = json.loads(payload)
 
+            # Step 3: Validate payload is a dict (not array, string, number, etc.)
+            # This prevents TypeError when accessing command.get('action')
             if not isinstance(command, dict):
                 logger.error("Command payload is not a JSON object")
                 return
 
+            # Step 4: Invoke application-specific command handler
+            # Handler is responsible for validating action, speed, etc.
             self.command_handler(command)
 
         except json.JSONDecodeError as exc:
+            # JSON parsing failed - malformed JSON from sender
             logger.error(f"Failed to parse command JSON: {exc}")
         except Exception as exc:
+            # Catch-all for any other errors to prevent MQTT loop crash
             logger.error(f"Error handling command: {exc}")
 
     def _on_disconnect(self, client: mqtt.Client, userdata: Any, return_code: int) -> None:
@@ -408,10 +421,13 @@ class MQTTClient:
             f"Topic: {self.status_topic}, Payload: {status}"
         )
 
-        # Publish to MQTT
+        # PRIMARY: Publish to MQTT broker for real-time subscribers (frontend, other controllers)
+        # This is the primary telemetry channel - low latency, pub/sub pattern
         self._publish_to_mqtt(status)
 
-        # Optionally push to central API HTTP endpoint
+        # SECONDARY: Push to Central API HTTP endpoint (if configured)
+        # This ensures telemetry reaches the database even if MQTT subscribers are offline
+        # HTTP push is best-effort - errors are logged but don't fail the publish
         if self.central_api_url:
             self._push_to_http(status)
 
@@ -434,19 +450,27 @@ class MQTTClient:
             message was queued successfully, not whether it was delivered.
         """
         try:
+            # Serialize Python dict to JSON string
             payload = json.dumps(status)
+
+            # Publish to MQTT broker (asynchronous operation)
+            # result.rc indicates if message was queued, not if it was delivered
             result = self.client.publish(self.status_topic, payload)
 
+            # Check if publish was queued successfully
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
                 logger.info(f"Published status to {self.status_topic}: {status}")
             else:
+                # Publish failed - likely client not connected or broker rejected
                 error_msg = f"Failed to publish to {self.status_topic} (rc={result.rc})"
                 logger.error(error_msg)
                 raise MQTTPublishError(error_msg)
 
         except TypeError as exc:
+            # JSON serialization failed - status contains non-serializable objects
             raise MQTTPublishError(f"Status is not JSON serializable: {exc}") from exc
         except Exception as exc:
+            # Catch-all for unexpected errors
             raise MQTTPublishError(f"Unexpected error during publish: {exc}") from exc
 
     def _push_to_http(self, status: dict[str, Any]) -> None:
@@ -469,17 +493,25 @@ class MQTTClient:
             fallback mechanism.
         """
         try:
+            # Construct HTTP endpoint URL
             url = f"{self.central_api_url}/api/status/update"
+
+            # Send POST request with JSON body (short timeout for non-critical operation)
             response = requests.post(url, json=status, timeout=2)
 
+            # Check HTTP response status
             if response.status_code == 200:
                 logger.info(f"Pushed status to central API: {status}")
             else:
+                # HTTP error - log but don't fail (this is best-effort fallback)
                 logger.error(
                     f"Failed to push status to central API: {response.status_code} {response.text}"
                 )
 
         except (RequestException, Timeout) as exc:
+            # Network error or timeout - log but don't fail
+            # MQTT publish already succeeded, this is just supplementary
             logger.error(f"Exception during HTTP push to central API: {exc}")
         except Exception as exc:
+            # Catch-all for unexpected errors
             logger.error(f"Unexpected error during HTTP push: {exc}")

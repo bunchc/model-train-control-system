@@ -174,23 +174,32 @@ class CentralAPIClient:
             ... else:
             ...     print("API is offline, using cached config")
         """
+        # Retry loop: attempt up to max_retries times with delays
         for attempt in range(self.max_retries):
             try:
+                # Send HTTP GET to ping endpoint
                 url = f"{self.base_url}/api/ping"
                 response = requests.get(url, timeout=self.timeout)
 
+                # Success: API responded with 200 OK
                 if response.status_code == 200:
                     logger.info("Central API is accessible")
-                    return True
+                    return True  # Exit immediately on success
+                # Non-200 response: log but retry (might be temporary API issue)
 
             except (RequestException, Timeout, RequestsConnectionError) as exc:
+                # Network error: DNS failure, connection refused, timeout, etc.
+                # Log attempt number and error for debugging
                 logger.warning(
                     f"Central API not accessible (attempt {attempt + 1}/{self.max_retries}): {exc}"
                 )
 
+            # Delay before next retry (unless this was the last attempt)
+            # Implements simple retry with fixed delay (not exponential backoff)
             if attempt < self.max_retries - 1:
                 time.sleep(self.retry_delay)
 
+        # All retries exhausted - API is unreachable
         return False
 
     def check_controller_exists(self, controller_uuid: str) -> bool:

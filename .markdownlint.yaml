@@ -1,0 +1,65 @@
+# Markdownlint configuration for documentation
+# Optimized for technical documentation with code blocks and diagrams
+
+# Line length - disabled (code blocks, URLs, tables exceed 80 chars)
+MD013: false
+
+# Inline HTML - allowed (badges, MermaidJS diagrams, collapsible sections)
+MD033:
+  allowed_elements:
+    - details
+    - summary
+    - sub
+    - sup
+    - br
+    - img
+    - a
+    - div
+    - span
+    - table
+    - thead
+    - tbody
+    - tr
+    - th
+    - td
+
+# Bare URLs - allowed (reference documentation, quick links)
+MD034: false
+
+# First line must be H1 - disabled (some docs have front matter)
+MD041: false
+
+# Duplicate headings - allow in different sections
+MD024:
+  siblings_only: true
+
+# List indentation - 2 spaces (matches code style)
+MD007:
+  indent: 2
+
+# Ordered list item prefix - sequential numbering
+MD029:
+  style: "ordered"
+
+# Emphasis style - consistent asterisks
+MD049:
+  style: "asterisk"
+
+# Strong style - consistent asterisks
+MD050:
+  style: "asterisk"
+
+# Code block style - fenced with language
+MD046:
+  style: "fenced"
+
+# Trailing spaces - 2 allowed (for line breaks)
+MD009:
+  br_spaces: 2
+
+# Multiple blank lines - allow 2 (visual separation in docs)
+MD012:
+  maximum: 2
+
+# Commands shown as code - disabled (sometimes we show shell prompts)
+MD014: false

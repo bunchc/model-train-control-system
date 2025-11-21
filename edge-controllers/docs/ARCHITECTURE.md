@@ -1,7 +1,7 @@
 # Edge Controller Architecture
 
 **Version:** 1.0  
-**Last Updated:** 2024-01-08  
+**Last Updated:** November 21, 2025  
 **Status:** Living Document
 
 ---
@@ -18,7 +18,6 @@
 - [Error Handling & Resilience](#error-handling--resilience)
 - [Security Considerations](#security-considerations)
 - [Deployment Scenarios](#deployment-scenarios)
-- [Functional Requirements](#functional-requirements)
 - [Performance Characteristics](#performance-characteristics)
 - [Future Enhancements](#future-enhancements)
 
@@ -50,10 +49,9 @@ The Edge Controller is a Python application that runs on Raspberry Pi devices to
 
 ### Quick Links
 
-- **Setup Guide:** See [`edge-controllers/pi-template/README.md`](../../edge-controllers/pi-template/README.md)
-- **API Reference:** See [`docs/edge-controllers/AI_SPECS.md`](AI_SPECS.md)
-- **Troubleshooting:** See [Error Handling & Resilience](#error-handling--resilience)
-- **MQTT Topics:** See [`docs/mqtt-topics.md`](../mqtt-topics.md)
+- **Setup Guide:** See [`pi-template/README.md`](../pi-template/README.md)
+- **API Reference:** See [`docs/AI_SPECS.md`](AI_SPECS.md)
+- **MQTT Topics:** See [`../../docs/mqtt-topics.md`](../../docs/mqtt-topics.md)
 
 ---
 
@@ -122,14 +120,6 @@ graph TB
 
 3. **Separation of Concerns:** Configuration (HTTP) and control (MQTT) are decoupled. Controllers can operate offline with cached config while maintaining real-time command execution.
 
-### Where This Fits
-
-- **Edge Layer:** This controller runs on Raspberry Pi hardware at the "edge" (close to the physical trains)
-- **Central Orchestration:** The Central API and MQTT broker coordinate all controllers
-- **User Interface:** The Web UI sends commands through the Central API, which publishes to MQTT
-- **Multiple Controllers:** Each train has its own edge controller (1:1 mapping)
-- **Scalability:** Adding a new train = deploying a new edge controller + registering with the API
-
 ---
 
 ## Component Architecture
@@ -179,13 +169,13 @@ graph TB
 
 | Component | File | Responsibility | External Dependencies |
 |-----------|------|---------------|----------------------|
-| **EdgeControllerApp** | [`main.py`](../../edge-controllers/pi-template/app/main.py) | Application lifecycle, orchestration, command routing | None (pure coordination) |
-| **ConfigManager** | [`config/manager.py`](../../edge-controllers/pi-template/app/config/manager.py) | Configuration state machine, registration flow | [`CentralAPIClient`](../../edge-controllers/pi-template/app/api/client.py), [`ConfigLoader`](../../edge-controllers/pi-template/app/config/loader.py) |
-| **ConfigLoader** | [`config/loader.py`](../../edge-controllers/pi-template/app/config/loader.py) | File I/O for YAML configs (service + runtime) | `yaml`, `pathlib` |
-| **CentralAPIClient** | [`api/client.py`](../../edge-controllers/pi-template/app/api/client.py) | HTTP communication with Central API | `requests`, `socket` |
-| **MQTTClient** | [`mqtt_client.py`](../../edge-controllers/pi-template/app/mqtt_client.py) | MQTT pub/sub, command handling, status publishing | `paho-mqtt` |
-| **HardwareController** | [`hardware.py`](../../edge-controllers/pi-template/app/hardware.py) | Generic GPIO control (motors, lights, sensors) | `gpiozero` |
-| **StepperMotorHatController** | [`stepper_hat.py`](../../edge-controllers/pi-template/app/stepper_hat.py) | Waveshare stepper HAT control (singleton) | `gpiozero`, `lgpio` |
+| **EdgeControllerApp** | [`main.py`](../pi-template/app/main.py) | Application lifecycle, orchestration, command routing | None (pure coordination) |
+| **ConfigManager** | [`config/manager.py`](../pi-template/app/config/manager.py) | Configuration state machine, registration flow | [`CentralAPIClient`](../pi-template/app/api/client.py), [`ConfigLoader`](../pi-template/app/config/loader.py) |
+| **ConfigLoader** | [`config/loader.py`](../pi-template/app/config/loader.py) | File I/O for YAML configs (service + runtime) | `yaml`, `pathlib` |
+| **CentralAPIClient** | [`api/client.py`](../pi-template/app/api/client.py) | HTTP communication with Central API | `requests`, `socket` |
+| **MQTTClient** | [`mqtt_client.py`](../pi-template/app/mqtt_client.py) | MQTT pub/sub, command handling, status publishing | `paho-mqtt` |
+| **HardwareController** | [`hardware.py`](../pi-template/app/hardware.py) | Generic GPIO control (motors, lights, sensors) | `gpiozero` |
+| **StepperMotorHatController** | [`stepper_hat.py`](../pi-template/app/stepper_hat.py) | Waveshare stepper HAT control (singleton) | `gpiozero`, `lgpio` |
 
 ### Data Flow Architecture
 
@@ -251,7 +241,7 @@ graph TD
 
 **Purpose:** Static, version-controlled configuration that defines how the controller connects to infrastructure.
 
-**Location:** [`edge-controllers/pi-template/app/edge-controller.conf`](../../edge-controllers/pi-template/app/edge-controller.conf)
+**Location:** [`pi-template/app/edge-controller.conf`](../pi-template/app/edge-controller.conf)
 
 **Contents:**
 
@@ -267,7 +257,7 @@ logging_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
 
 **Purpose:** Dynamic configuration downloaded from Central API. Contains train-specific settings.
 
-**Location:** [`edge-controllers/pi-template/app/edge-controller.yaml`](../../edge-controllers/pi-template/app/edge-controller.yaml) (auto-generated)
+**Location:** [`pi-template/app/edge-controller.yaml`](../pi-template/app/edge-controller.yaml) (auto-generated)
 
 **Contents:**
 
@@ -411,30 +401,11 @@ sequenceDiagram
 
 **Outcome:** Controller operates with last known good configuration. When API becomes available again, config will refresh on next boot or periodic check.
 
-### Design Decision: Why Two Config Files?
+### Design Decision: Why Plugin Pattern?
 
-**Alternatives Considered:**
+#### Chosen: Plugin Pattern + Dependency Injection
 
-1. **Single Config File:** Combine service and runtime config in one YAML file.
-   - **Rejected:** Service config is static (versioned), runtime config is dynamic (generated). Mixing them complicates deployment and versioning.
-
-2. **Environment Variables Only:** No config files, everything via env vars.
-   - **Rejected:** Complex nested structures (MQTT broker settings) are cumbersome as env vars. Config files provide better readability and validation.
-
-3. **Config Server (Consul, etcd):** Fetch all config from a distributed key-value store.
-   - **Rejected:** Over-engineered for current scale. Adds operational complexity (another service to run). YAML files + HTTP API is simpler.
-
-**Chosen Approach:**
-
-- **Service config file:** Infrastructure settings (rarely change, version-controlled)
-- **Runtime config file:** Train-specific settings (admin-managed, cached for offline)
-- **Environment variables:** Overrides for development/debugging only
-
-**Benefits:**
-
-- Clear separation of concerns
-- Offline operation via cached runtime config
-- Easy to reason about (service config = infrastructure, runtime config = application)
+Reasons for choosing the plugin pattern:
 
 ---
 
@@ -612,7 +583,7 @@ sequenceDiagram
 
 The edge controller uses a **plugin pattern** to support different motor controllers, sensor HATs, and GPIO configurations. This allows the same codebase to work with:
 
-- Generic GPIO (via [`gpiozero`](../../edge-controllers/pi-template/app/hardware.py))
+- Generic GPIO (via [`gpiozero`](../pi-template/app/hardware.py))
 - Waveshare Stepper Motor HAT (via I2C)
 - Adafruit Motor HAT
 - Custom Arduino-based controllers (via serial)
@@ -639,7 +610,7 @@ class HardwareController:
 
 ### Hardware Controller Implementations
 
-#### 1. Generic GPIO Controller ([`hardware.py`](../../edge-controllers/pi-template/app/hardware.py))
+#### 1. Generic GPIO Controller ([`hardware.py`](../pi-template/app/hardware.py))
 
 **Use Case:** Simple DC motors, lights, sensors using Raspberry Pi GPIO pins directly.
 
@@ -665,7 +636,7 @@ hw.turn_on_light(light_index=0)
 sensor_value = hw.read_sensor(sensor_index=0)
 ```
 
-#### 2. Stepper Motor HAT Controller ([`stepper_hat.py`](../../edge-controllers/pi-template/app/stepper_hat.py))
+#### 2. Stepper Motor HAT Controller ([`stepper_hat.py`](../pi-template/app/stepper_hat.py))
 
 **Use Case:** Waveshare stepper motor HAT for precise motor control via I2C.
 
@@ -942,33 +913,6 @@ if not self.api_client.check_accessibility():
 
 **Use Case:** Network partition, API maintenance, or deployment. Controller continues operating trains without interruption.
 
-### Logging Strategy
-
-**Log Levels:**
-
-| Level | Use Case | Example |
-|-------|----------|---------|
-| **DEBUG** | Development only | `DEBUG: Received MQTT message: {raw_payload}` |
-| **INFO** | Normal operations | `INFO: Started motor at speed 50` |
-| **WARNING** | Recoverable issues | `WARNING: MQTT disconnected, retrying...` |
-| **ERROR** | Failures requiring attention | `ERROR: Hardware command failed: GPIO timeout` |
-
-**Configuration:**
-
-```python
-# main.py
-logging.basicConfig(
-    level=logging.INFO,  # Production: INFO, Development: DEBUG
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
-```
-
-**Log Destinations:**
-
-- **Console:** stdout (captured by systemd or Docker logs)
-- **Future:** File rotation (7-day retention)
-- **Future:** Syslog or centralized logging (Loki, Elasticsearch)
-
 ---
 
 ## Security Considerations
@@ -1067,40 +1011,6 @@ def _on_message(self, client, userdata, msg):
   run: trivy image edge-controller:latest
 ```
 
-#### 5. Network Segmentation
-
-**Recommended Deployment:**
-
-```text
-┌─────────────────────────────────────┐
-│  Public Internet                     │
-└────────────┬────────────────────────┘
-             │
-        ┌────▼────┐
-        │ Firewall │
-        └────┬────┘
-             │
-┌────────────▼──────────────┐
-│  DMZ / Management VLAN     │
-│  - Web UI (HTTPS only)     │
-│  - Central API (internal)  │
-└────────────┬───────────────┘
-             │
-┌────────────▼──────────────┐
-│  Edge Controller VLAN      │
-│  - MQTT Broker (no public) │
-│  - Edge Controllers        │
-└───────────────────────────┘
-```
-
-**Firewall Rules:**
-
-- **Allow:** Web UI → Central API (HTTPS)
-- **Allow:** Central API → MQTT Broker (MQTT/TLS)
-- **Allow:** Edge Controllers → MQTT Broker (MQTT/TLS)
-- **Deny:** All other traffic to edge VLAN
-- **Deny:** Direct internet access from edge controllers
-
 ---
 
 ## Deployment Scenarios
@@ -1112,7 +1022,7 @@ def _on_message(self, client, userdata, msg):
 **Setup:**
 
 ```bash
-cd infra/docker
+cd ../../infra/docker
 docker-compose up --build
 ```
 
@@ -1160,11 +1070,11 @@ cd edge-controllers/pi-template
 pip3 install -r requirements.txt
 
 # Configure service config
-cp examples/edge-controller.conf app/edge-controller.conf
+cp examples/pi-config.yaml app/edge-controller.conf
 vim app/edge-controller.conf  # Update central_api_host
 
 # Install systemd service
-sudo cp examples/edge-controller.service /etc/systemd/system/
+sudo cp edge-controller.service /etc/systemd/system/
 sudo systemctl enable edge-controller
 sudo systemctl start edge-controller
 
@@ -1203,196 +1113,6 @@ curl http://central-api:8000/api/controllers
 mosquitto_sub -h mqtt-broker -t "trains/+/status" -C 1
 ```
 
-### Kubernetes Deployment
-
-**Use Case:** Scale to many controllers in a cluster
-
-**Manifest:** [`infra/k8s/manifests/edge-controller-deployment.yaml`](../../infra/k8s/manifests/edge-controller-deployment.yaml)
-
-**Key Features:**
-
-- ConfigMap for service config
-- Secret for MQTT credentials
-- Persistent volume for cached config
-- Health checks (liveness, readiness)
-
-**Deployment:**
-
-```bash
-kubectl apply -f infra/k8s/manifests/
-kubectl get pods -l app=edge-controller
-kubectl logs -f edge-controller-abc123
-```
-
-**Scaling:**
-
-```bash
-# Deploy 10 edge controllers
-kubectl scale deployment edge-controller --replicas=10
-```
-
-### Production Considerations
-
-**Monitoring:**
-
-- **Metrics:** Prometheus exporter for command latency, status publish frequency, hardware errors
-- **Logs:** Centralized logging (Loki, Elasticsearch) for debugging
-- **Alerts:** PagerDuty/Slack alerts for controller disconnections
-
-**High Availability:**
-
-- **MQTT Broker:** Deploy MQTT cluster (EMQX, VerneMQ) for fault tolerance
-- **Central API:** Deploy API replicas behind load balancer
-- **Edge Controllers:** Auto-restart on failure (systemd, Kubernetes)
-
-**Backup & Recovery:**
-
-- **Config Backup:** Back up `edge-controller.yaml` to S3/NFS daily
-- **Disaster Recovery:** Re-register controller with Central API (UUID is preserved in backup)
-
----
-
-## Functional Requirements
-
-### FR1: Controller Registration
-
-**Requirement:** Edge controller shall register with Central API on first boot and obtain a unique UUID.
-
-**Implementation:** [`api/client.py::register_controller()`](../../edge-controllers/pi-template/app/api/client.py)
-
-**Flow:**
-
-1. Get hostname and IP address
-2. POST to `/api/controllers/register` with `{name, address}`
-3. Receive `{uuid, status}` response
-4. Cache UUID in `edge-controller.yaml`
-
-**Acceptance Criteria:**
-
-- ✅ UUID is globally unique (verified by Central API)
-- ✅ Registration survives controller restart (UUID is cached)
-- ✅ Duplicate registrations return existing UUID (idempotent)
-
-**Test Coverage:**
-
-- Unit test: `test_api_client.py::test_register_controller_success`
-- Integration test: `test_config_flow.py::test_full_config_initialization_new_controller`
-
----
-
-### FR2: Configuration Management
-
-**Requirement:** Controller shall download runtime configuration from Central API and cache it locally.
-
-**Implementation:** [`config/manager.py::initialize()`](../../edge-controllers/pi-template/app/config/manager.py)
-
-**Flow:**
-
-1. Check if cached config exists (has UUID)
-2. If yes, attempt to download fresh config from API
-3. If download fails, use cached config (graceful degradation)
-4. If no cached config, register as new controller
-
-**Acceptance Criteria:**
-
-- ✅ Operates with cached config when API is down
-- ✅ Refreshes config on reconnect
-- ✅ Validates config structure before use
-
-**Test Coverage:**
-
-- Unit test: `test_config_loader.py::test_load_cached_runtime_config`
-- Integration test: `test_config_flow.py::test_config_initialization_existing_controller`
-
----
-
-### FR3: MQTT Command Reception
-
-**Requirement:** Controller shall subscribe to `trains/{train_id}/commands` and execute valid commands.
-
-**Implementation:** [`mqtt_client.py::_on_message()`](../../edge-controllers/pi-template/app/mqtt_client.py)
-
-**Supported Commands:**
-
-- `{"action": "start", "speed": 50}` - Start motor
-- `{"action": "stop"}` - Stop motor
-- `{"action": "setSpeed", "speed": 75}` - Change speed
-
-**Acceptance Criteria:**
-
-- ✅ Invalid JSON is logged and ignored
-- ✅ Unknown actions are logged and ignored
-- ✅ Commands are idempotent (can retry safely)
-
-**Test Coverage:**
-
-- Unit test: `test_mqtt_client.py::test_on_message_valid_command`
-- E2E test: `test_controller_lifecycle.py::test_command_handling_flow`
-
----
-
-### FR4: Status Publishing
-
-**Requirement:** Controller shall publish status updates to `trains/{train_id}/status`.
-
-**Implementation:** [`mqtt_client.py::publish_status()`](../../edge-controllers/pi-template/app/mqtt_client.py)
-
-**Triggers:**
-
-- After each command execution (immediate)
-- Periodic heartbeat every 30 seconds
-- On hardware state change
-
-**Status Fields:**
-
-```json
-{
-  "train_id": "train-1",
-  "speed": 50,
-  "voltage": 12.0,
-  "current": 0.8,
-  "position": "section_A"
-}
-```
-
-**Acceptance Criteria:**
-
-- ✅ Status reflects actual hardware state
-- ✅ Publishes succeed or log errors (no crash)
-- ✅ Includes timestamp (ISO 8601)
-
-**Test Coverage:**
-
-- Unit test: `test_mqtt_client.py::test_publish_status`
-
----
-
-### FR5: Hardware Control
-
-**Requirement:** Controller shall safely control motor speed and direction via GPIO/I2C.
-
-**Implementation:**
-
-- [`hardware.py::HardwareController`](../../edge-controllers/pi-template/app/hardware.py) (generic GPIO)
-- [`stepper_hat.py::StepperMotorHatController`](../../edge-controllers/pi-template/app/stepper_hat.py) (Waveshare HAT)
-
-**Safety Features:**
-
-- Emergency stop on exception
-- Speed limiting (0-100 range)
-- Graceful cleanup on shutdown
-
-**Acceptance Criteria:**
-
-- ✅ Motors stop on Ctrl+C or exception
-- ✅ Speed changes are smooth (no sudden jumps)
-- ✅ GPIO pins are released on exit
-
-**Test Coverage:**
-
-- Unit test: Hardware controllers are mocked (no real GPIO)
-- E2E test: Requires physical hardware (manual testing)
-
 ---
 
 ## Performance Characteristics
@@ -1420,20 +1140,6 @@ kubectl scale deployment edge-controller --replicas=10
 
 - Raspberry Pi 3 Model B+ (1GB RAM, 1.4GHz quad-core CPU)
 - Raspberry Pi 4 Model B (4GB RAM, 1.5GHz quad-core CPU)
-
-### Throughput
-
-| Metric | Value | Notes |
-|--------|-------|-------|
-| **Commands/Second** | 10 | Tested with synthetic load |
-| **Status Updates/Second** | 1 | Configurable, default is 1 Hz |
-| **Concurrent Trains** | 1 | One controller per train |
-
-**Bottlenecks:**
-
-- **MQTT Broker:** Can handle 1000+ messages/second (not a bottleneck)
-- **GPIO Operations:** Blocking, ~5ms per operation
-- **Network Latency:** Typically 10-50ms on local network
 
 ---
 
@@ -1491,27 +1197,7 @@ start_http_server(8000)  # Expose /metrics endpoint
 
 ---
 
-#### 3. Over-the-Air (OTA) Updates
-
-**Goal:** Update controller software remotely without SSH
-
-**Implementation:**
-
-- Controller polls Central API for available updates
-- Downloads new release artifact
-- Verifies checksum
-- Restarts with new code
-
-**Benefits:**
-
-- Deploy fixes to 100+ controllers without manual SSH
-- Staged rollouts (canary deployments)
-
-**Complexity:** High (security, rollback, testing)
-
----
-
-#### 4. Multi-Train Support
+#### 3. Multi-Train Support
 
 **Goal:** One controller manages multiple trains
 
@@ -1527,7 +1213,7 @@ start_http_server(8000)  # Expose /metrics endpoint
 
 ---
 
-#### 5. Sensor Integration
+#### 4. Sensor Integration
 
 **Goal:** Position tracking, obstacle detection, collision avoidance
 
@@ -1559,63 +1245,7 @@ start_http_server(8000)  # Expose /metrics endpoint
 
 ---
 
-### Migration Paths
-
-#### To Kubernetes
-
-**Changes Required:**
-
-- Use ConfigMaps for service config
-- Use Secrets for MQTT credentials
-- Use PersistentVolumeClaims for cached config
-
-**Benefits:**
-
-- Autoscaling
-- Self-healing (auto-restart on failure)
-- Centralized logging and monitoring
-
----
-
-#### To AWS IoT Core
-
-**Changes Required:**
-
-- Replace `paho-mqtt` with AWS IoT SDK
-- Use X.509 certificates for authentication
-- Register controllers as IoT Things
-
-**Benefits:**
-
-- Fully managed MQTT broker
-- Integration with AWS Lambda, DynamoDB
-- Global scale (millions of devices)
-
----
-
-#### To ESP32 (Arduino)
-
-**Changes Required:**
-
-- Port Python code to C/C++ (Arduino framework)
-- Replace `requests` with `HTTPClient`
-- Replace `paho-mqtt` with `PubSubClient`
-
-**Benefits:**
-
-- Lower cost (ESP32 vs. Raspberry Pi)
-- Lower power consumption
-- Faster boot time
-
-**Challenges:**
-
-- Less memory (512KB vs. 1GB)
-- No operating system (harder to debug)
-- Limited libraries
-
----
-
-## Appendix A: File Structure
+## Appendix: File Structure
 
 ```text
 edge-controllers/pi-template/
@@ -1631,13 +1261,13 @@ edge-controllers/pi-template/
 │   ├── mqtt_client.py             # MQTTClient: Pub/sub, command handling
 │   ├── hardware.py                # HardwareController: Generic GPIO control
 │   ├── stepper_hat.py             # StepperMotorHatController: Stepper motor HAT
-│   ├── controllers.py             # (Legacy) FastAPI endpoints
-│   ├── context.py                 # (Legacy) Context management functions
+│   ├── controllers.py             # FastAPI endpoints (legacy/development)
+│   ├── context.py                 # Context management functions (legacy)
 │   ├── edge-controller.conf       # Service config (static, versioned)
 │   └── edge-controller.yaml       # Runtime config (generated, cached)
 ├── tests/
 │   ├── conftest.py                # Shared pytest fixtures
-│   ├── unit/                      # Fast, isolated tests (<1s total)
+│   ├── unit/                      # Fast, isolated tests
 │   │   ├── test_config_loader.py
 │   │   ├── test_api_client.py
 │   │   └── test_mqtt_client.py
@@ -1654,45 +1284,20 @@ edge-controllers/pi-template/
 ├── Dockerfile                     # Multi-stage build, non-root user
 ├── Dockerfile-local               # Local development variant
 ├── Makefile                       # Dev commands (make test, make security, etc.)
-├── .pre-commit-config.yaml        # Pre-commit hooks (Ruff, Bandit, MyPy)
+├── .pre-commit-config.yaml        # Pre-commit hooks
 └── README.md                      # Quick start guide
 ```
 
 ---
 
-## Appendix B: Glossary
-
-| Term | Definition |
-|------|------------|
-| **Edge Controller** | Raspberry Pi device controlling a physical train |
-| **Central API** | FastAPI server managing system configuration and commands |
-| **Runtime Config** | Train-specific settings (MQTT broker, train ID) downloaded from API |
-| **Service Config** | Static infrastructure settings (API host, log level) |
-| **UUID** | Universally Unique Identifier assigned to each controller |
-| **MQTT** | Message Queuing Telemetry Transport protocol (pub/sub messaging) |
-| **GPIO** | General Purpose Input/Output (Raspberry Pi pins) |
-| **HAT** | Hardware Attached on Top (Raspberry Pi expansion board) |
-| **QoS** | Quality of Service (MQTT message delivery guarantee) |
-| **Singleton** | Design pattern ensuring only one instance of a class exists |
-| **Graceful Degradation** | System continues operating with reduced functionality |
-| **Idempotent** | Operation can be repeated without changing the result |
-
----
-
 **Document Version:** 1.0  
-**Last Updated:** 2024-01-08  
+**Last Updated:** November 21, 2025  
 **Maintained By:** Development Team  
 **Review Cycle:** Quarterly or on major architecture changes
-
-**Changelog:**
-
-- **2024-01-08:** Initial version (comprehensive architecture documentation)
-
----
 
 **Related Documents:**
 
 - [AI Specifications](AI_SPECS.md) - For AI agents working on the codebase
-- [README](../../edge-controllers/pi-template/README.md) - Quick start guide
-- [MQTT Topics](../mqtt-topics.md) - MQTT topic structure and payloads
+- [Quick Start Guide](../pi-template/README.md) - Setup and deployment
+- [MQTT Topics](../../docs/mqtt-topics.md) - Topic structure and payloads
 - [Security Policy](../../SECURITY.md) - Security best practices

@@ -15,7 +15,7 @@ Before you begin, ensure you have the following installed on your development ma
 
 Familiarize yourself with the project structure:
 
-```
+```text
 model-train-control-system/
 ├── edge-controllers/          # Raspberry Pi controllers for trains
 ├── central_api/               # Central API for managing train commands
@@ -34,7 +34,7 @@ model-train-control-system/
 
    Start by cloning the repository to your local machine:
 
-   ```
+   ```bash
    git clone <repository-url>
    cd model-train-control-system
    ```
@@ -59,7 +59,7 @@ model-train-control-system/
 
    Use Docker Compose to run the entire application stack. Navigate to the `infra/docker` directory and execute:
 
-   ```
+   ```bash
    docker-compose up
    ```
 

@@ -5,6 +5,7 @@ This guide covers how to run, test, and verify the Model Train Control System lo
 ---
 
 ## Prerequisites
+
 - Python 3.10+ (for API/unit tests)
 - Docker & docker-compose (for integration tests and full stack)
 - Node.js/npm (for frontend/gateway, if running outside Docker)
@@ -22,6 +23,7 @@ docker-compose up --build
 ```
 
 This starts:
+
 - `mqtt` (Eclipse Mosquitto broker) on ports 1883 (MQTT) and 9001 (WebSocket)
 - `central_api` (FastAPI) on port 8000
 - `gateway` (Express/Node) on port 3000
@@ -34,6 +36,7 @@ This starts:
 **Location:** `tests/unit/test_mqtt_adapter.py`
 
 **Run:**
+
 ```bash
 pytest -q tests/unit/test_mqtt_adapter.py
 ```
@@ -46,6 +49,7 @@ pytest -q tests/unit/test_mqtt_adapter.py
 
 **Run:**
 Start the stack (see above), then in another terminal:
+
 ```bash
 pytest -q tests/integration/test_end_to_end.py
 ```
@@ -55,6 +59,7 @@ pytest -q tests/integration/test_end_to_end.py
 ## 4. Manual Verification (MQTT/REST)
 
 **Send a command via API:**
+
 ```bash
 curl -X POST http://localhost:8000/api/trains/1/command \
   -H "Content-Type: application/json" \
@@ -62,11 +67,13 @@ curl -X POST http://localhost:8000/api/trains/1/command \
 ```
 
 **Subscribe to MQTT topic:**
+
 ```bash
 mosquitto_sub -h localhost -p 1883 -t 'trains/1/commands' -v
 ```
 
 **Publish a status (simulate edge):**
+
 ```bash
 mosquitto_pub -h localhost -p 1883 -t 'trains/1/status' -m '{"train_id":"1","speed":42,"voltage":12.2,"position":"section_A"}'
 ```
@@ -76,14 +83,17 @@ mosquitto_pub -h localhost -p 1883 -t 'trains/1/status' -m '{"train_id":"1","spe
 ## 5. Frontend & Gateway
 
 **Frontend:**
+
 ```bash
 cd frontend/web
 npm install
 npm start
 ```
+
 - Ensure MQTT broker URL is set to `ws://localhost:9001` in `src/services/mqtt.ts`.
 
 **Gateway:**
+
 ```bash
 cd gateway/orchestrator
 npm install
@@ -103,6 +113,7 @@ npm start
 ---
 
 ## 7. Troubleshooting
+
 - If a service fails to connect to MQTT, check that the broker is running (`docker-compose ps`).
 - For frontend MQTT issues, confirm the WebSocket URL matches `ws://localhost:9001`.
 - For integration tests, ensure all containers are healthy and reachable.
@@ -110,6 +121,7 @@ npm start
 ---
 
 ## 8. Additional Notes
+
 - See `docs/mqtt-topics.md` for topic conventions and payload examples.
 - See `infra/docker/docker-compose.yml` for service wiring and ports.
 - Unit and integration tests mock or require the broker; always start the stack for integration tests.

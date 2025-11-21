@@ -60,19 +60,31 @@ def is_central_api_accessible(service_config, retries=5, delay=2):
     Note:
         All exceptions are caught and logged. Method never raises.
     """
+    # Retry loop: attempt up to 'retries' times with delays between attempts
     for attempt in range(retries):
         try:
+            # Construct ping endpoint URL from service config
             base_url = get_central_api_url(service_config)
             url = f"{base_url}/api/ping"
+
+            # Send GET request with short timeout (2 seconds)
             resp = requests.get(url, timeout=2)
+
+            # Success: API responded with 200 OK
             if resp.status_code == 200:
-                return True
+                return True  # Exit immediately on first success
+            # Non-200 status: retry (might be temporary API issue)
+
         except Exception as e:
+            # Network error: timeout, connection refused, DNS failure, etc.
+            # Log attempt number for debugging
             logging.warning(f"Central API not accessible (attempt {attempt + 1}/{retries}): {e}")
 
+        # Delay before next retry (unless this was the last attempt)
         if attempt < retries - 1:
             time.sleep(delay)
 
+    # All retries exhausted - API is unreachable
     return False
 
 
