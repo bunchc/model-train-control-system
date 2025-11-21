@@ -1,4 +1,21 @@
-"""Main entry point for edge controller application."""
+"""Main entry point for edge controller application.
+
+This module provides the EdgeControllerApp class which orchestrates the entire
+edge controller lifecycle including:
+- Configuration initialization (service and runtime configs)
+- Hardware controller setup (GPIO or simulation mode)
+- MQTT client initialization and command handling
+- Main application loop and graceful shutdown
+
+The application supports both production mode (with real hardware) and simulation
+mode (LOCAL_DEV=true) for development and testing without physical hardware.
+
+Typical usage:
+    python app/main.py
+
+Or in simulation mode:
+    LOCAL_DEV=true python app/main.py
+"""
 
 import logging
 import os
@@ -35,22 +52,69 @@ else:
 
 
 class StepperMotorSimulator:
-    """Simulator for stepper motor when hardware is unavailable."""
+    """Simulator for stepper motor when hardware is unavailable.
+
+    This class provides a drop-in replacement for StepperMotorHatController
+    when running in LOCAL_DEV mode or when hardware modules are not available.
+    All methods log their calls but perform no actual hardware operations.
+
+    This enables:
+    - Development without physical Raspberry Pi hardware
+    - Testing on non-ARM platforms (x86, macOS, etc.)
+    - CI/CD pipeline execution without hardware dependencies
+    """
 
     def start(self, speed: int) -> None:
+        """Simulate starting the motor.
+
+        Args:
+            speed: Motor speed (0-100)
+        """
         logger.info(f"[SIMULATION] start({speed}) called")
 
     def stop(self) -> None:
+        """Simulate stopping the motor."""
         logger.info("[SIMULATION] stop() called")
 
     def set_speed(self, speed: int) -> None:
+        """Simulate setting motor speed.
+
+        Args:
+            speed: Motor speed (0-100)
+        """
         logger.info(f"[SIMULATION] set_speed({speed}) called")
 
 
 class EdgeControllerApp:
-    """Main application for edge controller."""
+    """Main application for edge controller.
 
-    def __init__(self):
+    This class orchestrates the entire edge controller application lifecycle:
+
+    Architecture:
+        1. Configuration Management: Loads service config and downloads/caches runtime config
+        2. Hardware Initialization: Sets up GPIO controllers or simulation mode
+        3. MQTT Communication: Establishes pub/sub with broker for commands and status
+        4. Command Handling: Processes incoming MQTT commands and executes on hardware
+        5. Graceful Shutdown: Cleans up resources on exit
+
+    Attributes:
+        config_manager: Manages service and runtime configuration
+        mqtt_client: Handles MQTT pub/sub communication
+        hardware_controller: Controls physical hardware or simulation
+        train_id: Identifier for the train this controller manages
+
+    Example:
+        >>> app = EdgeControllerApp()
+        >>> if app.initialize():
+        ...     app.run()
+    """
+
+    def __init__(self) -> None:
+        """Initialize the edge controller application.
+
+        Sets all attributes to None. Actual initialization happens in initialize()
+        to allow for proper error handling and logging.
+        """
         self.config_manager: Optional[ConfigManager] = None
         self.mqtt_client: Optional[MQTTClient] = None
         self.hardware_controller: Optional[Any] = None
@@ -133,8 +197,23 @@ class EdgeControllerApp:
     def _handle_command(self, command: Dict[str, Any]) -> None:
         """Handle incoming MQTT command.
 
+        This is the callback function registered with MQTTClient. It receives
+        validated command dictionaries from MQTT messages and delegates to
+        hardware execution.
+
+        Command Flow:
+            1. MQTT message received on commands_topic
+            2. MQTTClient validates JSON and calls this handler
+            3. Command is logged for audit trail
+            4. Command is delegated to _execute_hardware_command()
+
         Args:
-            command: Command dictionary from MQTT
+            command: Command dictionary with 'action' key and optional parameters.
+                Expected format: {'action': 'start|stop|setSpeed', 'speed': int}
+
+        Note:
+            This method does not raise exceptions. All errors are caught and
+            logged in _execute_hardware_command() to prevent MQTT callback failures.
         """
         logger.info(f"Received command: {command}")
 
@@ -142,10 +221,33 @@ class EdgeControllerApp:
         self._execute_hardware_command(command)
 
     def _execute_hardware_command(self, command: Dict[str, Any]) -> None:
-        """Execute command on hardware.
+        """Execute command on hardware controller.
+
+        This method translates MQTT command payloads into hardware controller
+        method calls. It implements the command routing logic and error handling.
+
+        Supported Commands:
+            - {'action': 'start', 'speed': 50}: Start motor at specified speed
+            - {'action': 'stop'}: Stop motor immediately
+            - {'action': 'setSpeed', 'speed': 75}: Change motor speed
 
         Args:
-            command: Command dictionary
+            command: Command dictionary containing:
+                - action (str): Required. Command type (start|stop|setSpeed)
+                - speed (int): Optional. Motor speed 0-100 (default: 50)
+
+        Error Handling:
+            - Unknown actions are logged as warnings and ignored
+            - Hardware exceptions are caught, logged, and do not propagate
+            - This ensures MQTT callback chain remains stable
+
+        Side Effects:
+            - Modifies hardware controller state (motor speed, direction)
+            - Logs all command executions and errors
+
+        Example:
+            >>> self._execute_hardware_command({'action': 'start', 'speed': 60})
+            # Logs: "Started motor at speed 60"
         """
         action = command.get("action")
 
