@@ -129,7 +129,7 @@ class MQTTClient:
         ...     train_id="1",
         ...     status_topic="trains/1/status",
         ...     commands_topic="trains/1/commands",
-        ...     command_handler=handle_cmd
+        ...     command_handler=handle_cmd,
         ... )
         >>> client.start()
     """
@@ -221,9 +221,9 @@ class MQTTClient:
         """
         # Check connection result code (0 = success)
         if return_code == 0:
-            logger.info("="*50)
+            logger.info("=" * 50)
             logger.info(f"✓ Connected to MQTT broker at {self.broker_host}:{self.broker_port}")
-            logger.info("="*50)
+            logger.info("=" * 50)
 
             # Automatically subscribe to commands topic on successful connection
             # This ensures we receive commands even after reconnection
@@ -330,10 +330,10 @@ class MQTTClient:
             This callback is for logging/monitoring only.
         """
         if return_code != 0:
-            logger.warning("="*50)
+            logger.warning("=" * 50)
             logger.warning(f"⚠ Unexpected MQTT disconnection (code: {return_code})")
             logger.warning("MQTT client will attempt automatic reconnection...")
-            logger.warning("="*50)
+            logger.warning("=" * 50)
         else:
             logger.info("✓ Disconnected from MQTT broker (clean disconnect)")
 
@@ -368,7 +368,7 @@ class MQTTClient:
             logger.info("Initiating MQTT connection...")
             logger.info(f"  Broker: {self.broker_host}:{self.broker_port}")
             logger.info(f"  Train ID: {self.train_id}")
-            logger.info(f"  Keepalive: 60 seconds")
+            logger.info("  Keepalive: 60 seconds")
 
             self.client.connect(self.broker_host, self.broker_port, keepalive=60)
             logger.info("✓ TCP connection established")

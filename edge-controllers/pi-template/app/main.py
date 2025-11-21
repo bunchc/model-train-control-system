@@ -126,9 +126,9 @@ class EdgeControllerApp:
         Returns:
             True if initialization successful, False otherwise
         """
-        logger.info("="*60)
+        logger.info("=" * 60)
         logger.info("EDGE CONTROLLER INITIALIZATION STARTED")
-        logger.info("="*60)
+        logger.info("=" * 60)
         logger.info(f"Environment: LOCAL_DEV={LOCAL_DEV}")
         logger.info(f"Hardware Available: {HARDWARE_AVAILABLE}")
 
@@ -149,10 +149,10 @@ class EdgeControllerApp:
 
         except ConfigurationError as e:
             # Critical error - cannot proceed (service config missing or API unreachable with no cache)
-            logger.error("="*60)
+            logger.error("=" * 60)
             logger.error("CRITICAL ERROR: Configuration initialization failed")
             logger.error(f"Error: {e}")
-            logger.error("="*60)
+            logger.error("=" * 60)
             return False
 
         # Check if we have runtime configuration
@@ -176,7 +176,9 @@ class EdgeControllerApp:
         commands_topic = runtime_config.get("commands_topic", f"trains/{self.train_id}/commands")
 
         logger.info("MQTT Configuration:")
-        logger.info(f"  Broker: {mqtt_broker.get('host', 'localhost')}:{mqtt_broker.get('port', 1883)}")
+        logger.info(
+            f"  Broker: {mqtt_broker.get('host', 'localhost')}:{mqtt_broker.get('port', 1883)}"
+        )
         logger.info(f"  Status Topic: {status_topic}")
         logger.info(f"  Commands Topic: {commands_topic}")
 
@@ -228,15 +230,15 @@ class EdgeControllerApp:
 
         except MQTTClientError as e:
             # MQTT connection failed - cannot proceed without real-time communication
-            logger.error("="*60)
+            logger.error("=" * 60)
             logger.error("CRITICAL ERROR: MQTT connection failed")
             logger.error(f"Error: {e}")
-            logger.error("="*60)
+            logger.error("=" * 60)
             return False
 
-        logger.info("="*60)
+        logger.info("=" * 60)
         logger.info("✓ EDGE CONTROLLER INITIALIZATION COMPLETE")
-        logger.info("="*60)
+        logger.info("=" * 60)
         return True
 
     def _handle_command(self, command: Dict[str, Any]) -> None:
@@ -260,9 +262,9 @@ class EdgeControllerApp:
             This method does not raise exceptions. All errors are caught and
             logged in _execute_hardware_command() to prevent MQTT callback failures.
         """
-        logger.info("="*40)
+        logger.info("=" * 40)
         logger.info(f">>> COMMAND RECEIVED: {command}")
-        logger.info("="*40)
+        logger.info("=" * 40)
 
         # Execute command on hardware
         self._execute_hardware_command(command)
@@ -293,7 +295,7 @@ class EdgeControllerApp:
             - Logs all command executions and errors
 
         Example:
-            >>> self._execute_hardware_command({'action': 'start', 'speed': 60})
+            >>> self._execute_hardware_command({"action": "start", "speed": 60})
             # Logs: "Started motor at speed 60"
 
         Note:

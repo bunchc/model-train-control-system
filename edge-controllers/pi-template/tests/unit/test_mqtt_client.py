@@ -7,16 +7,16 @@ import pytest
 from mqtt_client import MQTTClient, MQTTConnectionError, MQTTPublishError
 
 
-@pytest.mark.unit
+@pytest.mark.unit()
 class TestMQTTClient:
     """Tests for MQTTClient class."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_command_handler(self) -> MagicMock:
         """Create mock command handler."""
         return MagicMock()
 
-    @pytest.fixture
+    @pytest.fixture()
     def mqtt_client(self, mock_command_handler: MagicMock) -> MQTTClient:
         """Create MQTT client instance."""
         return MQTTClient(

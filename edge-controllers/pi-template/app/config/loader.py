@@ -66,7 +66,7 @@ class ConfigLoader:
     Example:
         >>> loader = ConfigLoader(
         ...     config_path=Path("edge-controller.conf"),
-        ...     cached_config_path=Path("edge-controller.yaml")
+        ...     cached_config_path=Path("edge-controller.yaml"),
         ... )
         >>> service_config = loader.load_service_config()
         >>> print(service_config["central_api_host"])
@@ -203,11 +203,13 @@ class ConfigLoader:
             - File is written with safe YAML dumper (no Python objects)
 
         Example:
-            >>> loader.save_runtime_config({
-            ...     "uuid": "abc-123",
-            ...     "train_id": "train-1",
-            ...     "mqtt_broker": {"host": "mqtt", "port": 1883}
-            ... })
+            >>> loader.save_runtime_config(
+            ...     {
+            ...         "uuid": "abc-123",
+            ...         "train_id": "train-1",
+            ...         "mqtt_broker": {"host": "mqtt", "port": 1883},
+            ...     }
+            ... )
         """
         try:
             # Ensure directory exists

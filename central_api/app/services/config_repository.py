@@ -1,0 +1,412 @@
+"""Database operations for configuration storage.
+
+This module implements the Repository pattern, separating data access
+from business logic. All SQLite interactions are contained here.
+"""
+
+import json
+import logging
+import sqlite3
+from pathlib import Path
+from typing import Any, Optional
+
+
+logger = logging.getLogger(__name__)
+
+
+class ConfigRepository:
+    """Database repository for configuration persistence.
+
+    Handles all SQLite database operations for storing and retrieving
+    configuration data. Implements the Repository pattern.
+    """
+
+    def __init__(self, db_path: Path, schema_path: Path) -> None:
+        """Initialize repository with database connection.
+
+        Args:
+            db_path: Path to SQLite database file
+            schema_path: Path to SQL schema file for initialization
+
+        Raises:
+            sqlite3.Error: If database connection fails
+        """
+        self.db_path = db_path
+        self.schema_path = schema_path
+        self._ensure_database_exists()
+
+    def _ensure_database_exists(self) -> None:
+        """Create database and tables if they don't exist.
+
+        Executes schema SQL script to initialize database structure.
+        Safe to call multiple times - CREATE TABLE IF NOT EXISTS.
+        """
+        if not self.db_path.exists():
+            logger.info(f"Creating new database at {self.db_path}")
+
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            if self.schema_path.exists():
+                with self.schema_path.open("r") as schema_file:
+                    conn.executescript(schema_file.read())
+                conn.commit()
+                logger.info("Database schema initialized")
+            else:
+                logger.warning(f"Schema file not found: {self.schema_path}")
+        finally:
+            conn.close()
+
+    def get_edge_controller(self, controller_id: str) -> Optional[dict[str, Any]]:
+        """Retrieve edge controller by ID.
+
+        Args:
+            controller_id: Edge controller identifier
+
+        Returns:
+            Dictionary with controller data or None if not found
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.execute("SELECT * FROM edge_controllers WHERE id = ?", (controller_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def get_all_edge_controllers(self) -> list[dict[str, Any]]:
+        """Retrieve all edge controllers.
+
+        Returns:
+            List of controller configuration dicts
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.execute("SELECT * FROM edge_controllers")
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def add_edge_controller(self, controller_id: str, name: str, address: str) -> None:
+        """Add new edge controller to database.
+
+        Args:
+            controller_id: Unique UUID for controller
+            name: Human-readable name
+            address: Network address (IP or hostname)
+
+        Raises:
+            sqlite3.IntegrityError: If controller_id already exists
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                """
+                INSERT INTO edge_controllers (id, name, address, enabled)
+                VALUES (?, ?, ?, 1)
+                """,
+                (controller_id, name, address),
+            )
+            conn.commit()
+            logger.info(f"Added edge controller: {name} ({controller_id})")
+        finally:
+            conn.close()
+
+    def update_edge_controller(
+        self,
+        controller_id: str,
+        name: Optional[str] = None,
+        address: Optional[str] = None,
+        enabled: Optional[bool] = None,
+    ) -> bool:
+        """Update edge controller fields.
+
+        Args:
+            controller_id: UUID of controller to update
+            name: New name (optional)
+            address: New address (optional)
+            enabled: New enabled state (optional)
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            updates = []
+            params = []
+
+            if name is not None:
+                updates.append("name = ?")
+                params.append(name)
+            if address is not None:
+                updates.append("address = ?")
+                params.append(address)
+            if enabled is not None:
+                updates.append("enabled = ?")
+                params.append(int(enabled))
+
+            if updates:
+                params.append(controller_id)
+                query = f"UPDATE edge_controllers SET {', '.join(updates)} WHERE id = ?"  # nosec B608
+                conn.execute(query, params)
+                conn.commit()
+                logger.info(f"Updated edge controller: {controller_id}")
+        finally:
+            conn.close()
+
+    def get_trains_for_controller(self, controller_id: str) -> list[dict[str, Any]]:
+        """Get all trains assigned to a controller.
+
+        Args:
+            controller_id: UUID of the edge controller
+
+        Returns:
+            List of train configuration dicts
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.execute(
+                "SELECT * FROM trains WHERE edge_controller_id = ?", (controller_id,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_train(self, train_id: str) -> Optional[dict[str, Any]]:
+        """Retrieve train configuration.
+
+        Args:
+            train_id: Train identifier
+
+        Returns:
+            Dictionary with train config or None if not found
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.execute("SELECT * FROM trains WHERE id = ?", (train_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def get_all_trains(self) -> list[dict[str, Any]]:
+        """Retrieve all trains.
+
+        Returns:
+            List of train configuration dicts
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.execute("SELECT * FROM trains")
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_plugin(self, plugin_name: str) -> Optional[dict[str, Any]]:
+        """Retrieve plugin by name.
+
+        Args:
+            plugin_name: Plugin name
+
+        Returns:
+            Dictionary with plugin data or None if not found
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.execute("SELECT * FROM plugins WHERE name = ?", (plugin_name,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def get_all_plugins(self) -> list[dict[str, Any]]:
+        """Retrieve all plugins.
+
+        Returns:
+            List of plugin configuration dicts
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.execute("SELECT * FROM plugins")
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def update_train_status(
+        self, train_id: str, speed: int, voltage: float, current: float, position: str
+    ) -> None:
+        """Update the status of a train in the train_status table.
+
+        Args:
+            train_id: UUID of the train
+            speed: Current speed (0-100)
+            voltage: Current voltage reading
+            current: Current amperage reading
+            position: Current track position/section
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO train_status
+                (train_id, speed, voltage, current, position, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (train_id, speed, voltage, current, position),
+            )
+            conn.commit()
+            logger.info(
+                f"Updated train status for {train_id}: speed={speed}, "
+                f"voltage={voltage}, current={current}, position={position}"
+            )
+        finally:
+            conn.close()
+
+    def get_train_status(self, train_id: str) -> Optional[dict[str, Any]]:
+        """Retrieve the latest status for a train from the train_status table.
+
+        Args:
+            train_id: UUID of the train
+
+        Returns:
+            Train status dict or None if not found
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.execute(
+                "SELECT train_id, speed, voltage, current, position "
+                "FROM train_status WHERE train_id = ?",
+                (train_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def get_metadata(self, key: str) -> Optional[str]:
+        """Retrieve metadata value.
+
+        Args:
+            key: Metadata key
+
+        Returns:
+            Value or None if not found
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            cursor = conn.execute("SELECT value FROM config_metadata WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+        finally:
+            conn.close()
+
+    def set_metadata(self, key: str, value: str) -> None:
+        """Set metadata key-value pair.
+
+        Args:
+            key: Metadata key
+            value: Metadata value
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO config_metadata (key, value) VALUES (?, ?)", (key, value)
+            )
+            conn.commit()
+            logger.info(f"Set metadata {key} = {value}")
+        finally:
+            conn.close()
+
+    def insert_plugin(self, name: str, description: str, config: dict[str, Any]) -> None:
+        """Insert plugin into database.
+
+        Args:
+            name: Plugin name
+            description: Plugin description
+            config: Plugin configuration dict
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO plugins (name, description, config) VALUES (?, ?, ?)",
+                (name, description, json.dumps(config)),
+            )
+            conn.commit()
+            logger.info(f"Inserted plugin: {name}")
+        finally:
+            conn.close()
+
+    def insert_edge_controller_with_details(
+        self, controller_id: str, name: str, description: str, address: str, enabled: bool
+    ) -> None:
+        """Insert edge controller with full details.
+
+        Args:
+            controller_id: Unique UUID
+            name: Controller name
+            description: Controller description
+            address: Network address
+            enabled: Whether controller is enabled
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO edge_controllers
+                (id, name, description, address, enabled)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (controller_id, name, description, address, int(enabled)),
+            )
+            conn.commit()
+            logger.info(f"Inserted edge controller: {name} ({controller_id})")
+        finally:
+            conn.close()
+
+    def insert_train(
+        self,
+        train_id: str,
+        name: str,
+        description: str,
+        model: str,
+        plugin_name: str,
+        plugin_config: str,
+        edge_controller_id: str,
+    ) -> None:
+        """Insert train into database.
+
+        Args:
+            train_id: Unique UUID
+            name: Train name
+            description: Train description
+            model: Train model
+            plugin_name: Associated plugin name
+            plugin_config: Plugin configuration as YAML string
+            edge_controller_id: Associated controller UUID
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO trains
+                (id, name, description, model, plugin_name, plugin_config, edge_controller_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    train_id,
+                    name,
+                    description,
+                    model,
+                    plugin_name,
+                    plugin_config,
+                    edge_controller_id,
+                ),
+            )
+            conn.commit()
+            logger.info(f"Inserted train: {name} ({train_id})")
+        finally:
+            conn.close()
