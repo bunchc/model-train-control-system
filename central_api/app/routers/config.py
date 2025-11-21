@@ -13,6 +13,7 @@ Endpoints:
 """
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Body, HTTPException
 
@@ -21,6 +22,32 @@ from app.services.config_manager import ConfigManager
 
 
 router = APIRouter()
+
+logger = logging.getLogger("central_api.routers.config")
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s")
+handler.setFormatter(formatter)
+if not logger.hasHandlers():
+    logger.addHandler(handler)
+
+# Lazy singleton - initialized on first access, can be overridden for testing
+_config_instance: Optional[ConfigManager] = None
+
+
+def _get_config() -> ConfigManager:
+    """Get or create the ConfigManager singleton.
+
+    This function provides lazy initialization of the ConfigManager.
+    Tests can override _config_instance before calling routes.
+
+    Returns:
+        ConfigManager: The singleton instance
+    """
+    global _config_instance  # noqa: PLW0603
+    if _config_instance is None:
+        _config_instance = ConfigManager()
+    return _config_instance
 
 
 # Internal endpoint for updating train status
@@ -33,20 +60,9 @@ def update_train_status(
     position: str = Body(...),
 ):
     """Update the status of a train. Intended for edge-controller or internal use."""
-    config.update_train_status(train_id, speed, voltage, current, position)
+    _get_config().update_train_status(train_id, speed, voltage, current, position)
     logger.info(f"Status updated for train {train_id}")
     return {"message": "Status updated", "train_id": train_id}
-
-
-logger = logging.getLogger("central_api.routers.config")
-logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-formatter = logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s")
-handler.setFormatter(formatter)
-if not logger.hasHandlers():
-    logger.addHandler(handler)
-
-config = ConfigManager()
 
 
 @router.get("/config/edge-controllers/{edge_controller_id}", response_model=EdgeController)
@@ -82,7 +98,7 @@ def get_full_config():
         ```
     """
     logger.info("GET /config called")
-    return config.get_full_config()
+    return _get_config().get_full_config()
 
 
 # New endpoints for trains
@@ -99,7 +115,7 @@ def list_all_trains():
         ```
     """
     logger.info("GET /trains called")
-    return config.get_trains()
+    return _get_config().get_trains()
 
 
 @router.get("/config/trains", response_model=list[Train])
@@ -115,13 +131,13 @@ def list_all_trains_config():
         ```
     """
     logger.info("GET /config/trains called")
-    return config.get_trains()
+    return _get_config().get_trains()
 
 
 @router.get("/trains/{train_id}/status", response_model=TrainStatus)
 def get_train_status(train_id: str):
     """Get the latest status for a train from the database."""
-    status = config.get_train_status(train_id)
+    status = _get_config().get_train_status(train_id)
     if not status:
         logger.warning(f"No status found for train {train_id}")
         raise HTTPException(status_code=404, detail="Train status not available")
@@ -148,7 +164,7 @@ def get_train_config_by_id(train_id: str):
         ```
     """
     logger.info(f"GET /config/trains/{train_id} called")
-    train = config.get_train(train_id)
+    train = _get_config().get_train(train_id)
     if not train:
         logger.warning(f"Train not found: {train_id}")
         raise HTTPException(status_code=404, detail="Train not found")
@@ -170,7 +186,7 @@ def list_plugins():
         ```
     """
     logger.info("GET /plugins called")
-    return config.get_plugins()
+    return _get_config().get_plugins()
 
 
 # Controllers endpoints - use /controllers for all controller operations
@@ -178,7 +194,7 @@ def list_plugins():
 def list_controllers():
     """List all controllers in the system."""
     logger.info("GET /controllers called")
-    return config.get_edge_controllers()
+    return _get_config().get_edge_controllers()
 
 
 # Legacy alias for backward compatibility
@@ -186,16 +202,16 @@ def list_controllers():
 def list_edge_controllers():
     """Legacy endpoint - use /controllers instead."""
     logger.info("GET /edge-controllers called (legacy)")
-    return config.get_edge_controllers()
+    return _get_config().get_edge_controllers()
 
 
 @router.get("/controllers/{controller_id}", response_model=EdgeController)
 def get_controller(controller_id: str):
     """Get a specific controller by UUID."""
     logger.info(f"GET /controllers/{controller_id} called")
-    ec = config.get_edge_controller(controller_id)
+    ec = _get_config().get_edge_controller(controller_id)
     if not ec:
-        all_ecs = config.get_edge_controllers()
+        all_ecs = _get_config().get_edge_controllers()
         all_ids = [ec.id for ec in all_ecs]
         logger.warning(f"Controller not found: {controller_id}")
         logger.error(f"Controller 404: requested '{controller_id}', available: {all_ids}")
@@ -215,7 +231,7 @@ def get_edge_controller_config(edge_controller_id: str):
 def list_trains_for_controller(controller_id: str):
     """List all trains managed by a specific controller."""
     logger.info(f"GET /controllers/{controller_id}/trains called")
-    ec = config.get_edge_controller(controller_id)
+    ec = _get_config().get_edge_controller(controller_id)
     if not ec:
         logger.warning(f"Controller not found: {controller_id}")
         raise HTTPException(status_code=404, detail="Controller not found")
@@ -234,7 +250,7 @@ def list_trains_for_edge_controller(edge_controller_id: str):
 def get_train_for_controller(controller_id: str, train_id: str):
     """Get a specific train managed by a controller."""
     logger.info(f"GET /controllers/{controller_id}/trains/{train_id} called")
-    ec = config.get_edge_controller(controller_id)
+    ec = _get_config().get_edge_controller(controller_id)
     if not ec:
         logger.warning(f"Controller not found: {controller_id}")
         raise HTTPException(status_code=404, detail="Controller not found")
@@ -261,7 +277,7 @@ def ping_controller(controller_id: str):
     Returns 200 if the controller is found, 404 otherwise.
     """
     logger.info(f"GET /controllers/{controller_id}/ping called")
-    ec = config.get_edge_controller(controller_id)
+    ec = _get_config().get_edge_controller(controller_id)
     if not ec:
         logger.warning(f"Controller not found: {controller_id}")
         raise HTTPException(status_code=404, detail="Controller not found")
@@ -283,7 +299,7 @@ def register_controller(
     logger.info(f"POST /controllers/register called with name={name}, address={address}")
 
     # Check if controller with this name already exists
-    all_controllers = config.get_edge_controllers()
+    all_controllers = _get_config().get_edge_controllers()
     for ec in all_controllers:
         if ec.name == name:
             logger.info(f"Controller with name '{name}' already exists with UUID {ec.id}")
@@ -296,7 +312,7 @@ def register_controller(
 
     # Add controller to database using ConfigManager
     try:
-        config.add_edge_controller(new_uuid, name, address)
+        _get_config().add_edge_controller(new_uuid, name, address)
     except Exception as e:
         logger.exception("Failed to register controller")
         msg = f"Failed to register controller: {e!s}"
@@ -324,7 +340,7 @@ def get_controller_runtime_config(uuid: str):
     """
     logger.info(f"GET /controllers/{uuid}/config called")
 
-    ec = config.get_edge_controller(uuid)
+    ec = _get_config().get_edge_controller(uuid)
     if not ec:
         logger.warning(f"Controller not found: {uuid}")
         raise HTTPException(status_code=404, detail="Controller not found")

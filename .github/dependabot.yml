@@ -50,6 +50,10 @@ updates:
     commit-message:
       prefix: "chore(docker)"
       include: "scope"
+    # Ignore Python 3.14 until incremental upgrade is complete (see issue #29)
+    ignore:
+      - dependency-name: "python"
+        versions: ["3.14.x", "3.13.x", "3.12.x", "3.11.x", "3.10.x"]
 
   # ============================================================================
   # GitHub Actions Dependencies
@@ -115,6 +119,10 @@ updates:
     commit-message:
       prefix: "chore(docker)"
       include: "scope"
+    # Ignore Python 3.14 until incremental upgrade is complete (see issue #29)
+    ignore:
+      - dependency-name: "python"
+        versions: ["3.14.x", "3.13.x", "3.12.x", "3.11.x", "3.10.x"]
 
   # ============================================================================
   # NPM Dependencies (frontend)
@@ -138,6 +146,15 @@ updates:
     versioning-strategy: increase
     allow:
       - dependency-type: "all"
+    # Ignore React 19 runtime packages until migration is complete (see issue #28)
+    # Note: @types/react 19.x is allowed as it's required by @types/react-dom 19.x
+    ignore:
+      - dependency-name: "react"
+        versions: ["19.x"]
+      - dependency-name: "react-dom"
+        versions: ["19.x"]
+      - dependency-name: "react-scripts"
+        versions: ["5.x"]
 
   # ============================================================================
   # NPM Dependencies (gateway)

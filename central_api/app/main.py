@@ -143,7 +143,7 @@ def read_root() -> dict[str, str]:
 
 
 @app.get("/api/ping")
-def ping() -> dict[str, str] | tuple[dict[str, str], int]:
+def ping():
     """Health check endpoint.
 
     Returns 200 if service is running and configuration is loaded.

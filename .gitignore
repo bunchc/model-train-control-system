@@ -21,7 +21,7 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+# package-lock.json - REMOVED: Required for npm ci in CI/CD
 yarn.lock
 pnpm-lock.yaml
 
