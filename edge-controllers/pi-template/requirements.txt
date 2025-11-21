@@ -20,7 +20,7 @@ ruff==0.3.4
 mypy==1.18.2
 
 # Security Scanning
-bandit==1.7.8
+bandit==1.8.6
 safety==3.7.0
 
 # Type Stubs
