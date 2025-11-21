@@ -5,7 +5,7 @@ paho-mqtt==1.6.1
 requests==2.31.0
 
 # Web Framework
-fastapi==0.110.0
+fastapi==0.121.3
 uvicorn[standard]==0.29.0
 
 # GPIO Control (Pi-specific)
