@@ -22,7 +22,7 @@ dev = [
     "bandit==1.7.8",
     "safety==3.7.0",
     "types-requests==2.32.4.20250913",
-    "types-pyyaml==6.0.12.20240311",
+    "types-pyyaml==6.0.12.20250915",
 ]
 
 [build-system]
