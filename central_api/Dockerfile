@@ -20,7 +20,7 @@ RUN wget https://www.sqlite.org/2025/sqlite-autoconf-${SQLITE_VERSION}.tar.gz &&
     make install
 
 # --- Stage 2: Python dependencies ---
-FROM python:3.11-slim AS python-builder
+FROM python:3.14-slim AS python-builder
 
 WORKDIR /build
 
@@ -29,7 +29,7 @@ COPY requirements.txt .
 RUN pip install --user --no-cache-dir -r requirements.txt
 
 # --- Stage 3: Final runtime image ---
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Copy SQLite from builder
 COPY --from=sqlite-builder /sqlite /usr/local
