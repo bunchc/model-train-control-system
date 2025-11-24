@@ -1,0 +1,715 @@
+type: spec.insomnia.rest/5.0
+schema_version: "5.1"
+name: Model Train Layout API 0.1.0
+meta:
+  id: wrk_cb46f29722874d8fae913ad6a051060c
+  created: 1763998483905
+  modified: 1763998483905
+  description: ""
+collection:
+  - name: trains
+    meta:
+      id: fld_fe587314732f4c1893faab5fa906ba7d
+      created: 1763143521650
+      modified: 1763157383281
+      sortKey: -1763143521650
+      description: Operations related to train management
+    children:
+      - url: "{{ _.base_url }}/api/trains"
+        name: List Trains
+        meta:
+          id: req_dac6522a9ba64d89b86681ca4d9643dc
+          created: 1763143521652
+          modified: 1763150926157
+          isPrivate: false
+          description: Returns a list of trains with pagination.
+          sortKey: -1763143521652
+        method: GET
+        parameters:
+          - name: limit
+            value: "20"
+            disabled: true
+          - name: offset
+            value: "0"
+            disabled: true
+        scripts:
+          afterResponse: |+
+            
+            insomnia.test('Check if status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/trains/{{ _.train_id }}/command"
+        name: Send Command
+        meta:
+          id: req_4c0526d710804f538b066253f4802346
+          created: 1763143521653
+          modified: 1763150923109
+          isPrivate: false
+          description: Sends a command to a specific train.
+          sortKey: -1763143521653
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "speed": null,
+              "direction": null,
+              "action": null
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+            disabled: false
+        scripts:
+          afterResponse: |+
+            
+            insomnia.test('Check if status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/trains/{% response 'body',
+          'req_e40baf473d654d2683c544e762ccb6dc', 'b64::JFswXS5pZA==::46b',
+          'always', 60 %}/status"
+        name: Get Status
+        meta:
+          id: req_08b13e63b2804ef0bbceae6a1fa4b14d
+          created: 1763143521655
+          modified: 1763157378577
+          isPrivate: false
+          description: Gets the status of a specific train.
+          sortKey: -1763143521655
+        method: GET
+        scripts:
+          afterResponse: |+
+            
+            insomnia.test('Check if status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+  - name: config
+    meta:
+      id: fld_98ccef3bd9ea4479b36a200002f04955
+      created: 1763143521651
+      modified: 1763157323544
+      sortKey: -1763143521651
+      description: Operations related to central API configuration
+    children:
+      - url: "{{ _.base_url }}/api/plugins"
+        name: List Available Plugins
+        meta:
+          id: req_07bac74f0760453bbc8de40869faa2b6
+          created: 1763143521656
+          modified: 1763157311914
+          isPrivate: false
+          description: Returns a list of available plugins.
+          sortKey: -1763143521656
+        method: GET
+        scripts:
+          afterResponse: |+
+            
+            insomnia.test('Check if status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/config"
+        name: Get the entire configuration
+        meta:
+          id: req_e3347576509641179dd208b8f077f3f4
+          created: 1763143521656
+          modified: 1763150911299
+          isPrivate: false
+          description: Returns the entire configuration of the central API.
+          sortKey: -1763143521656
+        method: GET
+        scripts:
+          afterResponse: |+
+            
+            insomnia.test('Check if status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/config/trains"
+        name: List all configured trains
+        meta:
+          id: req_e40baf473d654d2683c544e762ccb6dc
+          created: 1763143521657
+          modified: 1763150879566
+          isPrivate: false
+          description: Returns a list of all configured trains.
+          sortKey: -1763143521657
+        method: GET
+        scripts:
+          afterResponse: |+
+            
+            insomnia.test('Check if status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/config/trains/{% response 'body',
+          'req_e40baf473d654d2683c544e762ccb6dc', 'b64::JFswXS5pZA==::46b',
+          'always', 60 %}"
+        name: Get configuration for a specific train
+        meta:
+          id: req_f8fe788b0b934b9c958722af77b1cfb9
+          created: 1763143521657
+          modified: 1763157303572
+          isPrivate: false
+          description: Returns the configuration for a specific train.
+          sortKey: -1763143521657
+        method: GET
+        scripts:
+          afterResponse: |+
+            
+            insomnia.test('Check if status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/config/edge-controllers/{% response 'body',
+          'req_ebce3913bb87433b9a307fc4713e45c8', 'b64::JFswXS5pZA==::46b',
+          'always', 60 %}"
+        name: Get configuration for a specific edge controller
+        meta:
+          id: req_ba9bf8b52d944817b41be08995b4ede3
+          created: 1763143521658
+          modified: 1763155914990
+          isPrivate: false
+          description: Returns the configuration for a specific edge controller.
+          sortKey: -1763143521658
+        method: GET
+        scripts:
+          afterResponse: |+
+            insomnia.test('Check if status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/edge-controllers"
+        name: List all edge controllers
+        meta:
+          id: req_ebce3913bb87433b9a307fc4713e45c8
+          created: 1763143521658
+          modified: 1763155650351
+          isPrivate: false
+          description: Returns a list of all edge controllers.
+          sortKey: -1763143521658
+        method: GET
+        scripts:
+          afterResponse: |+
+            
+            insomnia.test('Check if status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+  - name: root
+    meta:
+      id: fld_c094e913fdca43df8cc04207c06c5858
+      created: 1763143521652
+      modified: 1763143521652
+      sortKey: -1763143521652
+      description: Basic API information
+    children:
+      - url: "{{ _.base_url }}/"
+        name: Read Root
+        meta:
+          id: req_156f39f1bdb94d22a81564f2c602849d
+          created: 1763143521656
+          modified: 1763143521656
+          isPrivate: false
+          description: Returns a basic greeting.
+          sortKey: -1763143521656
+        method: GET
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_60bf55f5ebd5470d94bc3437ac33e6bd
+    created: 1763143494865
+    modified: 1763157383279
+environments:
+  name: Base Environment
+  meta:
+    id: env_c243e5377285401abbb16469f5e213f7
+    created: 1763143494864
+    modified: 1763157383281
+    isPrivate: false
+  data:
+    base_url: "{{ _.scheme }}://{{ _.host }}{{ _.base_path }}"
+  subEnvironments:
+    - name: OpenAPI env localhost:8000
+      meta:
+        id: env_4d3170dca3334114bcf621905c5962a9
+        created: 1763143521650
+        modified: 1763157383280
+        isPrivate: false
+        sortKey: 1763143521650
+      data:
+        scheme: http
+        base_path: ""
+        host: localhost:8000
+        base_url: http://localhost:8000
+spec:
+  contents:
+    openapi: 3.1.0
+    info:
+      title: Model Train Layout API
+      description: API for managing a model train layout.
+      version: 0.1.0
+    servers:
+      - url: http://localhost:8000
+        description: Local development server
+    paths:
+      /api/trains:
+        get:
+          summary: List Trains
+          description: Returns a list of trains with pagination.
+          operationId: list_trains
+          tags:
+            - trains
+          parameters:
+            - name: limit
+              in: query
+              description: Maximum number of items to return
+              schema:
+                type: integer
+                format: int32
+                minimum: 1
+                maximum: 100
+                default: 20
+            - name: offset
+              in: query
+              description: Number of items to skip for pagination
+              schema:
+                type: integer
+                format: int32
+                minimum: 0
+                default: 0
+          responses:
+            "200":
+              description: Successful Response
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Train"
+                      meta:
+                        type: object
+                        properties:
+                          page:
+                            type: object
+                            properties:
+                              offset:
+                                type: integer
+                                description: The page offset
+                              limit:
+                                type: integer
+                                description: The page limit
+                              total:
+                                type: integer
+                                description: The total number of items available
+                              estimated_total:
+                                type: boolean
+                                description: If the total is estimated or a hard count
+                                default: true
+                    title: Response List Trains Api Trains  Get
+      /api/trains/{train_id}/command:
+        post:
+          summary: Send Command
+          description: Sends a command to a specific train.
+          operationId: send_command
+          tags:
+            - trains
+          parameters:
+            - name: train_id
+              in: path
+              required: true
+              schema:
+                type: string
+                title: Train Id
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/TrainCommand"
+          responses:
+            "200":
+              description: Successful Response
+            "422":
+              description: Validation Error
+              content:
+                application/json:
+                  schema:
+                    $ref: "#/components/schemas/HTTPValidationError"
+      /api/trains/{train_id}/status:
+        get:
+          summary: Get Status
+          description: Gets the status of a specific train.
+          operationId: get_status
+          tags:
+            - trains
+          parameters:
+            - name: train_id
+              in: path
+              required: true
+              schema:
+                type: string
+                title: Train Id
+          responses:
+            "200":
+              description: Successful Response
+            "422":
+              description: Validation Error
+              content:
+                application/json:
+                  schema:
+                    $ref: "#/components/schemas/HTTPValidationError"
+      /:
+        get:
+          summary: Read Root
+          description: Returns a basic greeting.
+          operationId: read_root
+          tags:
+            - root
+          responses:
+            "200":
+              description: Successful Response
+      /api/plugins:
+        get:
+          summary: List Available Plugins
+          description: Returns a list of available plugins.
+          operationId: list_plugins
+          tags:
+            - config
+          responses:
+            "200":
+              description: Successful Response
+              content:
+                application/json:
+                  schema:
+                    type: array
+                    items:
+                      type: string
+      /api/config:
+        get:
+          summary: Get the entire configuration
+          description: Returns the entire configuration of the central API.
+          operationId: get_full_config
+          tags:
+            - config
+          responses:
+            "200":
+              description: Successful Response
+              content:
+                application/json:
+                  schema:
+                    $ref: "#/components/schemas/FullConfig"
+      /api/config/trains:
+        get:
+          summary: List all configured trains
+          description: Returns a list of all configured trains.
+          operationId: list_trains_config
+          tags:
+            - config
+          responses:
+            "200":
+              description: Successful Response
+              content:
+                application/json:
+                  schema:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TrainConfig"
+      /api/config/trains/{train_id}:
+        get:
+          summary: Get configuration for a specific train
+          description: Returns the configuration for a specific train.
+          operationId: get_train_config
+          tags:
+            - config
+          parameters:
+            - name: train_id
+              in: path
+              required: true
+              schema:
+                type: string
+                title: Train Id
+          responses:
+            "200":
+              description: Successful Response
+              content:
+                application/json:
+                  schema:
+                    $ref: "#/components/schemas/TrainConfig"
+            "404":
+              description: Train not found
+      /api/edge-controllers:
+        get:
+          summary: List all edge controllers
+          description: Returns a list of all edge controllers.
+          operationId: list_edge_controllers
+          tags:
+            - config
+          responses:
+            "200":
+              description: Successful Response
+              content:
+                application/json:
+                  schema:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EdgeControllerConfig"
+      /api/config/edge-controllers/{edge_controller_id}:
+        get:
+          summary: Get configuration for a specific edge controller
+          description: Returns the configuration for a specific edge controller.
+          operationId: get_edge_controller_config
+          tags:
+            - config
+          parameters:
+            - name: edge_controller_id
+              in: path
+              required: true
+              schema:
+                type: string
+                title: Edge Controller Id
+          responses:
+            "200":
+              description: Successful Response
+              content:
+                application/json:
+                  schema:
+                    $ref: "#/components/schemas/EdgeControllerConfig"
+            "404":
+              description: Edge controller not found
+    components:
+      schemas:
+        HTTPValidationError:
+          properties:
+            detail:
+              items:
+                $ref: "#/components/schemas/ValidationError"
+              type: array
+              title: Detail
+          type: object
+          title: HTTPValidationError
+        Train:
+          properties:
+            id:
+              type: string
+              title: Id
+            name:
+              type: string
+              title: Name
+            status:
+              $ref: "#/components/schemas/TrainStatus"
+            commands:
+              $ref: "#/components/schemas/TrainCommand"
+          type: object
+          required:
+            - id
+            - name
+            - status
+            - commands
+          title: Train
+        TrainCommand:
+          properties:
+            speed:
+              anyOf:
+                - type: integer
+                - type: "null"
+              title: Speed
+            direction:
+              anyOf:
+                - type: string
+                - type: "null"
+              title: Direction
+            action:
+              anyOf:
+                - type: string
+                - type: "null"
+              title: Action
+          type: object
+          title: TrainCommand
+        TrainStatus:
+          properties:
+            train_id:
+              type: string
+              title: Train Id
+            speed:
+              type: integer
+              title: Speed
+            voltage:
+              type: number
+              title: Voltage
+            current:
+              type: number
+              title: Current
+            position:
+              type: string
+              title: Position
+          type: object
+          required:
+            - train_id
+            - speed
+            - voltage
+            - current
+            - position
+          title: TrainStatus
+        ValidationError:
+          properties:
+            loc:
+              items:
+                anyOf:
+                  - type: string
+                  - type: integer
+              type: array
+              title: Location
+            msg:
+              type: string
+              title: Message
+            type:
+              type: string
+              title: Error Type
+          type: object
+          required:
+            - loc
+            - msg
+            - type
+          title: ValidationError
+        TrainConfig:
+          type: object
+          properties:
+            train_id:
+              type: string
+              description: Unique identifier for the train
+            plugin:
+              type: string
+              description: Name of the plugin used for this train
+            plugin_config:
+              type: object
+              description: Plugin-specific configuration (e.g., pin numbers)
+            min_speed:
+              type: integer
+              description: Minimum speed of the train
+            max_speed:
+              type: integer
+              description: Maximum speed of the train
+          required:
+            - train_id
+            - plugin
+        FullConfig:
+          type: object
+          properties:
+            mqtt_server:
+              type: string
+              description: Location of the MQTT server
+            trains:
+              type: array
+              items:
+                $ref: "#/components/schemas/TrainConfig"
+        EdgeControllerConfig:
+          type: object
+          properties:
+            edge_controller_id:
+              type: string
+              description: Unique identifier for the edge controller
+            location:
+              type: string
+              description: Physical location of the edge controller
+            status:
+              type: string
+              description: Current status of the edge controller (e.g., online, offline)
+    tags:
+      - name: trains
+        description: Operations related to train management
+      - name: config
+        description: Operations related to central API configuration
+      - name: root
+        description: Basic API information
+  meta:
+    id: spc_db83407820b5423cac2d2c8606eb5385
+    created: 1763998483907
+    modified: 1763998483908
