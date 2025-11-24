@@ -29,6 +29,25 @@ collection:
             queries.
           sortKey: -1764006498983
         method: GET
+        scripts:
+          afterResponse: |+
+
+            insomnia.test('Status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+            insomnia.test('Response is JSON array', () => {
+                insomnia.expect(insomnia.response.json()).to.be.an('array');
+            });
+
+            insomnia.test('Trains have required properties', () => {
+                const trains = insomnia.response.json();
+                if (trains.length > 0) {
+                    insomnia.expect(trains[0]).to.have.property('id');
+                    insomnia.expect(trains[0]).to.have.property('name');
+                    insomnia.expect(trains[0]).to.have.property('plugin');
+                }
+            });
         settings:
           renderRequestBody: true
           encodeUrl: true
@@ -66,6 +85,18 @@ collection:
           - name: Content-Type
             value: application/json
             disabled: false
+        scripts:
+          afterResponse: |+
+
+            insomnia.test('Status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+            insomnia.test('Response has success message', () => {
+                const body = insomnia.response.json();
+                insomnia.expect(body).to.have.property('message');
+                insomnia.expect(body.message).to.equal('Command sent successfully');
+            });
         settings:
           renderRequestBody: true
           encodeUrl: true
@@ -86,6 +117,30 @@ collection:
             Status data is periodically updated by edge controllers via MQTT.
           sortKey: -1764006498985
         method: GET
+        scripts:
+          afterResponse: |+
+
+            insomnia.test('Status is 200 or 404', () => {
+                const validCodes = [200, 404];
+                insomnia.expect(validCodes).to.include(insomnia.response.code);
+            });
+
+            if (insomnia.response.code === 200) {
+                insomnia.test('Response has train status fields', () => {
+                    const status = insomnia.response.json();
+                    insomnia.expect(status).to.have.property('train_id');
+                    insomnia.expect(status).to.have.property('speed');
+                    insomnia.expect(status).to.have.property('voltage');
+                    insomnia.expect(status).to.have.property('current');
+                    insomnia.expect(status).to.have.property('position');
+                });
+
+                insomnia.test('Speed is valid range', () => {
+                    const status = insomnia.response.json();
+                    insomnia.expect(status.speed).to.be.at.least(0);
+                    insomnia.expect(status.speed).to.be.at.most(100);
+                });
+            }
         settings:
           renderRequestBody: true
           encodeUrl: true
@@ -114,6 +169,18 @@ collection:
             edge controllers, and trains.
           sortKey: -1764006498986
         method: GET
+        scripts:
+          afterResponse: |+
+
+            insomnia.test('Status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+            insomnia.test('Response has plugins and edge_controllers', () => {
+                const config = insomnia.response.json();
+                insomnia.expect(config).to.have.property('plugins');
+                insomnia.expect(config).to.have.property('edge_controllers');
+            });
         settings:
           renderRequestBody: true
           encodeUrl: true
@@ -132,8 +199,24 @@ collection:
           description: |
             Returns a list of all trains from the system configuration.
             This endpoint reads from the configuration database.
-          sortKey: -1764006498986
+          sortKey: -1764006498987
         method: GET
+        scripts:
+          afterResponse: |+
+
+            insomnia.test('Status is 200 or 404', () => {
+                const validCodes = [200, 404];
+                insomnia.expect(validCodes).to.include(insomnia.response.code);
+            });
+
+            if (insomnia.response.code === 200) {
+                insomnia.test('Response has train configuration', () => {
+                    const train = insomnia.response.json();
+                    insomnia.expect(train).to.have.property('id');
+                    insomnia.expect(train).to.have.property('name');
+                    insomnia.expect(train).to.have.property('plugin');
+                });
+            }
         settings:
           renderRequestBody: true
           encodeUrl: true
@@ -154,8 +237,18 @@ collection:
 
             Plugins can be attached to trains for controlling motors, lights,
             etc.
-          sortKey: -1764006498987
+          sortKey: -1764006498986
         method: GET
+        scripts:
+          afterResponse: |+
+
+            insomnia.test('Status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+            insomnia.test('Response is JSON array', () => {
+                insomnia.expect(insomnia.response.json()).to.be.an('array');
+            });
         settings:
           renderRequestBody: true
           encodeUrl: true
@@ -174,6 +267,16 @@ collection:
           description: Get configuration details for a specific train
           sortKey: -1764006498987
         method: GET
+        scripts:
+          afterResponse: |+
+
+            insomnia.test('Status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+            insomnia.test('Response is JSON array', () => {
+                insomnia.expect(insomnia.response.json()).to.be.an('array');
+            });
         settings:
           renderRequestBody: true
           encodeUrl: true
@@ -194,6 +297,16 @@ collection:
             Edge controllers are Raspberry Pi devices managing physical trains.
           sortKey: -1764006498987
         method: GET
+        scripts:
+          afterResponse: |+
+
+            insomnia.test('Status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+            insomnia.test('Response is JSON array', () => {
+                insomnia.expect(insomnia.response.json()).to.be.an('array');
+            });
         settings:
           renderRequestBody: true
           encodeUrl: true
@@ -212,6 +325,22 @@ collection:
           description: Get configuration details for a specific edge controller
           sortKey: -1764006498988
         method: GET
+        scripts:
+          afterResponse: |+
+
+            insomnia.test('Status is 200 or 404', () => {
+                const validCodes = [200, 404];
+                insomnia.expect(validCodes).to.include(insomnia.response.code);
+            });
+
+            if (insomnia.response.code === 200) {
+                insomnia.test('Response has edge controller configuration', () => {
+                    const controller = insomnia.response.json();
+                    insomnia.expect(controller).to.have.property('id');
+                    insomnia.expect(controller).to.have.property('name');
+                    insomnia.expect(controller).to.have.property('trains');
+                });
+            }
         settings:
           renderRequestBody: true
           encodeUrl: true
@@ -254,6 +383,19 @@ collection:
           - name: Content-Type
             value: application/json
             disabled: false
+        scripts:
+          afterResponse: |+
+
+            insomnia.test('Status is 200', () => {
+                insomnia.expect(insomnia.response.code).to.eql(200);
+            });
+
+            insomnia.test('Response confirms status update', () => {
+                const body = insomnia.response.json();
+                insomnia.expect(body).to.have.property('message');
+                insomnia.expect(body).to.have.property('train_id');
+                insomnia.expect(body.message).to.equal('Status updated');
+            });
         settings:
           renderRequestBody: true
           encodeUrl: true
@@ -277,6 +419,8 @@ environments:
     isPrivate: false
   data:
     base_url: "{{ _.scheme }}://{{ _.host }}{{ _.base_path }}"
+    train_id: "1"
+    edge_controller_id: "ec-001"
   subEnvironments:
     - name: OpenAPI env central-api:8000
       meta:

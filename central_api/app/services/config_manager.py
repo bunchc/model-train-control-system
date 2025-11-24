@@ -129,10 +129,10 @@ class ConfigManager:
         logger.info("Configuration bootstrap complete")
 
     def _ensure_valid_uuid(self, id_value: Any, name: str) -> str:
-        """Validate and normalize UUID value.
+        """Validate and normalize UUID value, generating one if needed.
 
         Args:
-            id_value: Value to validate as UUID
+            id_value: Value to validate as UUID (or placeholder like "${UUID}")
             name: Name for error messages
 
         Returns:
@@ -146,6 +146,14 @@ class ConfigManager:
             raise ConfigurationError(msg)
 
         uuid_str = id_value.lower().strip()
+
+        # Generate new UUID for placeholders or missing values
+        if uuid_str in ("${uuid}", "", "none", "null"):
+            import uuid
+
+            uuid_str = str(uuid.uuid4())
+            logger.info(f"Generated UUID for '{name}': {uuid_str}")
+            return uuid_str
 
         if not UUID_PATTERN.match(uuid_str):
             msg = f"Controller '{name}' has invalid UUID format: {id_value}"

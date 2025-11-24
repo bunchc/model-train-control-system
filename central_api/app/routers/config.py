@@ -38,16 +38,19 @@ _config_instance: Optional[ConfigManager] = None
 def _get_config() -> ConfigManager:
     """Get or create the ConfigManager singleton.
 
-    This function provides lazy initialization of the ConfigManager.
-    Tests can override _config_instance before calling routes.
+    This function retrieves the ConfigManager from app.state.
+    For tests, _config_instance can be set to override.
 
     Returns:
-        ConfigManager: The singleton instance
+        ConfigManager: The singleton instance from app.state
     """
-    global _config_instance  # noqa: PLW0603
-    if _config_instance is None:
-        _config_instance = ConfigManager()
-    return _config_instance
+    if _config_instance is not None:
+        return _config_instance
+
+    # Get from app.state (set during lifespan startup)
+    from app.main import app
+
+    return app.state.config_manager
 
 
 # Internal endpoint for updating train status

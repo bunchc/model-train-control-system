@@ -84,6 +84,8 @@ async def lifespan(_app: FastAPI):
             yaml_path=str(settings.config_yaml_path),
             db_path=str(settings.config_db_path),
         )
+        # Store in app.state so routes can access it
+        app.state.config_manager = config_manager
         logger.info("Configuration manager initialized successfully")
 
     except ConfigurationError as startup_error:

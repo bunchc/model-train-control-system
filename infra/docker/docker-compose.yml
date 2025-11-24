@@ -21,6 +21,7 @@ services:
       - "8000:8000"
     volumes:
       - ../../config.yaml:/app/config.yaml
+      - central_api_data:/app/data
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/api/ping\", timeout=2)'"]
       interval: 10s
@@ -57,3 +58,6 @@ services:
     image: nicolaka/netshoot:latest
     tty: true
     stdin_open: true
+
+volumes:
+  central_api_data:

@@ -22,13 +22,13 @@ class Settings(BaseSettings):
     """
 
     # API Configuration
-    api_host: str = Field(default="0.0.0.0", env="API_HOST")  # nosec B104
+    api_host: str = Field(default="0.0.0.0", env="API_HOST")  # nosec B104  # noqa: S104
     api_port: int = Field(default=8000, env="API_PORT", ge=1, le=65535)
 
     # Configuration Paths
     config_yaml_path: Path = Field(default=Path("/app/config.yaml"), env="CENTRAL_API_CONFIG_YAML")
     config_db_path: Path = Field(
-        default=Path("/app/central_api_config.db"), env="CENTRAL_API_CONFIG_DB"
+        default=Path("/app/data/central_api_config.db"), env="CENTRAL_API_CONFIG_DB"
     )
 
     # MQTT Configuration

@@ -12,8 +12,6 @@ set -euo pipefail  # Exit on error, undefined var, or pipe failure
 
 # Option to rebuild and restart Docker containers (default: yes)
 REBUILD=${1:-yes}
-# Option to run all requests as a collection or individually
-RUN_ALL=${RUN_ALL:-no}
 
 export API_URL="http://localhost:8000/api"
 export COMPOSE_FILE="infra/docker/docker-compose.yml"
@@ -21,10 +19,20 @@ export LOCAL_DEV=true
 export COMPOSE_PROFILE="local-dev"
 export EDGE_CONTROLLER_DOCKERFILE="Dockerfile-local"
 
+# Insomnia test configuration
+INSOMNIA_FILE="Model Train Control System API 0.1.0-wrk_8d50ef17b2464ceca69ec80fb936efc1.yaml"
+ENVIRONMENT="OpenAPI env localhost:8000"
+
 # Create logs directory with timestamp
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 LOG_DIR="test-logs/${TIMESTAMP}"
 mkdir -p "${LOG_DIR}"
+
+# Colors for output
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
 echo "Test run: ${TIMESTAMP}"
 echo "Logs will be saved to: ${LOG_DIR}"
@@ -48,6 +56,105 @@ display_logs_on_failure() {
   echo "========================================"
   echo "FAILURE DETECTED - Displaying Container Logs"
   echo "========================================"
+  echo ""
+
+  echo "--- MQTT Broker Logs ---"
+  docker logs docker-mqtt-1 2>&1 | tail -n 50
+
+  echo ""
+  echo "--- Central API Logs ---"
+  docker logs docker-central_api-1 2>&1 | tail -n 50
+
+  echo ""
+  echo "Full logs saved to: ${LOG_DIR}"
+  echo "========================================"
+}
+
+# Cleanup function
+cleanup() {
+  echo ""
+  echo "Capturing final logs..."
+  capture_all_logs "final"
+
+  if [ "${REBUILD}" = "yes" ]; then
+    echo "Stopping containers..."
+    docker-compose -f "${COMPOSE_FILE}" down
+  fi
+}
+
+# Set trap to cleanup on exit
+trap cleanup EXIT
+
+# Stop and remove existing containers if rebuild requested
+if [ "${REBUILD}" = "yes" ]; then
+  echo "Stopping and removing existing containers..."
+  docker-compose -f "${COMPOSE_FILE}" down
+  echo ""
+fi
+
+# Start services
+echo "Starting services..."
+if [ "${REBUILD}" = "yes" ]; then
+  echo "Building and starting containers..."
+  docker-compose -f "${COMPOSE_FILE}" up --build -d mqtt central_api
+else
+  echo "Starting containers (no rebuild)..."
+  docker-compose -f "${COMPOSE_FILE}" up -d mqtt central_api
+fi
+
+echo ""
+echo "Waiting for services to be ready..."
+sleep 5
+
+# Capture startup logs
+capture_all_logs "startup"
+
+# Wait for central_api to be healthy
+echo "Checking central_api health..."
+MAX_RETRIES=30
+RETRY_COUNT=0
+
+while [ ${RETRY_COUNT} -lt ${MAX_RETRIES} ]; do
+  if curl -s -f "${API_URL}/config" > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ Central API is running${NC}"
+    break
+  fi
+
+  RETRY_COUNT=$((RETRY_COUNT + 1))
+  echo "Waiting for API... (${RETRY_COUNT}/${MAX_RETRIES})"
+  sleep 2
+done
+
+if [ ${RETRY_COUNT} -eq ${MAX_RETRIES} ]; then
+  echo -e "${RED}ERROR: Central API failed to start${NC}"
+  display_logs_on_failure "central_api"
+  exit 1
+fi
+
+echo ""
+echo "======================================"
+echo "Running API Tests with Inso CLI"
+echo "======================================"
+echo ""
+
+inso run collection "wrk_8d50ef17b2464ceca69ec80fb936efc1" \
+    --env "${ENVIRONMENT}" \
+    --workingDir "${INSOMNIA_FILE}"
+
+# Capture exit code
+TEST_EXIT_CODE=$?
+
+echo ""
+echo "======================================"
+if [ ${TEST_EXIT_CODE} -eq 0 ]; then
+    echo -e "${GREEN}✓ All tests passed!${NC}"
+else
+    echo -e "${RED}✗ Some tests failed${NC}"
+    display_logs_on_failure "tests"
+fi
+echo "======================================"
+
+exit ${TEST_EXIT_CODE}
   echo ""
 
   echo "--- MQTT Broker Logs ---"

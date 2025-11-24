@@ -9,10 +9,11 @@ WORKDIR /build
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         wget \
+        ca-certificates \
         build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-RUN wget https://www.sqlite.org/2025/sqlite-autoconf-${SQLITE_VERSION}.tar.gz && \
+RUN wget --no-check-certificate https://www.sqlite.org/2025/sqlite-autoconf-${SQLITE_VERSION}.tar.gz && \
     tar xzf sqlite-autoconf-${SQLITE_VERSION}.tar.gz && \
     cd sqlite-autoconf-${SQLITE_VERSION} && \
     ./configure --prefix=/sqlite && \
@@ -34,19 +35,25 @@ FROM python:3.11-slim
 # Copy SQLite from builder
 COPY --from=sqlite-builder /sqlite /usr/local
 
-# Copy Python packages from builder
-COPY --from=python-builder /root/.local /root/.local
+# Copy Python packages from builder to system site-packages
+COPY --from=python-builder /root/.local /usr/local
 
 # Set environment for SQLite
 ENV LD_LIBRARY_PATH=/usr/local/lib
-ENV PATH=/usr/local/bin:/root/.local/bin:$PATH
+ENV PATH=/usr/local/bin:$PATH
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash apiuser
 
 # Set working directory and copy application
 WORKDIR /app
-COPY --chown=apiuser:apiuser app /app
+COPY --chown=apiuser:apiuser app /app/app
+
+# Create data directory for database
+RUN mkdir -p /app/data && chown apiuser:apiuser /app/data
+
+# Set PYTHONPATH so imports work correctly
+ENV PYTHONPATH=/app
 
 # Switch to non-root user
 USER apiuser
@@ -59,4 +66,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 EXPOSE 8000
 
 # Run application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
