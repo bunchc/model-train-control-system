@@ -6,6 +6,262 @@ meta:
   created: 1764006404274
   modified: 1764006404274
   description: ""
+collection:
+  - name: trains
+    meta:
+      id: fld_165317b0568a407bb53e9e861aed1b2e
+      created: 1764006498982
+      modified: 1764006498982
+      sortKey: -1764006498982
+      description: Train control and status operations
+    children:
+      - url: "{{ _.base_url }}/api/trains"
+        name: List All Trains
+        meta:
+          id: req_bce781a3be124fd59cddda685099ce2d
+          created: 1764006498983
+          modified: 1764006498983
+          isPrivate: false
+          description: >
+            Returns a list of all trains currently configured in the system.
+
+            Note: Currently returns mock data. Will be replaced with database
+            queries.
+          sortKey: -1764006498983
+        method: GET
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/trains/{{ _.train_id }}/command"
+        name: Send Command to Train
+        meta:
+          id: req_475591e800bd421698658b3e7e1e85ca
+          created: 1764006498984
+          modified: 1764006498984
+          isPrivate: false
+          description: >
+            Publishes a control command to the specified train via MQTT.
+
+            Commands are sent to topic: `trains/{train_id}/commands`
+
+
+            The edge controller subscribed to this topic will execute the
+            command.
+          sortKey: -1764006498984
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "action": "setSpeed",
+              "speed": 75,
+              "direction": "string"
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+            disabled: false
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/trains/{{ _.train_id }}/status"
+        name: Get Train Status from Database
+        meta:
+          id: req_1aecbf559cb64cae869b5ba0af759b92
+          created: 1764006498985
+          modified: 1764006498985
+          isPrivate: false
+          description: |
+            Retrieves the latest status for a train from the database.
+            Status data is periodically updated by edge controllers via MQTT.
+          sortKey: -1764006498985
+        method: GET
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+  - name: config
+    meta:
+      id: fld_1edf9f6701c0456db151568f743ac6b6
+      created: 1764006498982
+      modified: 1764006498982
+      sortKey: -1764006498982
+      description: System configuration management
+    children:
+      - url: "{{ _.base_url }}/api/config"
+        name: Get Full System Configuration
+        meta:
+          id: req_0f430ab5e0854aa5bb89bc7f550fea25
+          created: 1764006498986
+          modified: 1764006498986
+          isPrivate: false
+          description: |
+            Returns the complete system configuration including all plugins,
+            edge controllers, and trains.
+          sortKey: -1764006498986
+        method: GET
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/config/trains"
+        name: List All Configured Trains
+        meta:
+          id: req_52b8f0418d9a478da32fc3ade9f0b8ce
+          created: 1764006498986
+          modified: 1764006498986
+          isPrivate: false
+          description: |
+            Returns a list of all trains from the system configuration.
+            This endpoint reads from the configuration database.
+          sortKey: -1764006498986
+        method: GET
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/plugins"
+        name: List Available Plugins
+        meta:
+          id: req_1288bc2625b44fa5bf119ff409093355
+          created: 1764006498987
+          modified: 1764006498987
+          isPrivate: false
+          description: >
+            Returns all hardware plugins available in the system.
+
+            Plugins can be attached to trains for controlling motors, lights,
+            etc.
+          sortKey: -1764006498987
+        method: GET
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/config/trains/{{ _.train_id }}"
+        name: Get Train Configuration by ID
+        meta:
+          id: req_c200ba3c226c4dfc8c77a535758a5c05
+          created: 1764006498987
+          modified: 1764006498987
+          isPrivate: false
+          description: Get configuration details for a specific train
+          sortKey: -1764006498987
+        method: GET
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/controllers"
+        name: List All Edge Controllers
+        meta:
+          id: req_e9c0219b268f497ebc060a999e7da9c5
+          created: 1764006498987
+          modified: 1764006498987
+          isPrivate: false
+          description: |
+            Returns a list of all edge controllers in the system.
+            Edge controllers are Raspberry Pi devices managing physical trains.
+          sortKey: -1764006498987
+        method: GET
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/config/edge-controllers/{{ _.edge_controller_id }}"
+        name: Get Edge Controller Configuration
+        meta:
+          id: req_2b3680d83167424fa71f996af06784ca
+          created: 1764006498988
+          modified: 1764006498988
+          isPrivate: false
+          description: Get configuration details for a specific edge controller
+          sortKey: -1764006498988
+        method: GET
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+  - name: internal
+    meta:
+      id: fld_2bfe5628747f4b61a86d8749ec1c89fa
+      created: 1764006498983
+      modified: 1764006498983
+      sortKey: -1764006498983
+      description: Internal endpoints (used by edge controllers)
+    children:
+      - url: "{{ _.base_url }}/api/status/update"
+        name: Update Train Status (Internal)
+        meta:
+          id: req_6f5149e5372547ec87d77384ca7bfb3c
+          created: 1764006498988
+          modified: 1764006498988
+          isPrivate: false
+          description: |
+            Internal endpoint for updating train status in the database.
+            Typically called by edge controllers or MQTT bridge service.
+          sortKey: -1764006498988
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "train_id": "1",
+              "speed": 50,
+              "voltage": 12.3,
+              "current": 0.8,
+              "position": "section_A"
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+            disabled: false
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
 cookieJar:
   name: Default Jar
   meta:
@@ -17,8 +273,33 @@ environments:
   meta:
     id: env_4c63875450e35ac0c6d596c0209123e01976f5b6
     created: 1764006404278
-    modified: 1764006404278
+    modified: 1764006498980
     isPrivate: false
+  data:
+    base_url: "{{ _.scheme }}://{{ _.host }}{{ _.base_path }}"
+  subEnvironments:
+    - name: OpenAPI env central-api:8000
+      meta:
+        id: env_18404799440344199690735c709d9e91
+        created: 1764006498981
+        modified: 1764006498981
+        isPrivate: false
+        sortKey: 1764006498981
+      data:
+        scheme: http
+        base_path: ""
+        host: central-api:8000
+    - name: OpenAPI env localhost:8000
+      meta:
+        id: env_2dbae1201a49499ba0e19af292bacc19
+        created: 1764006498981
+        modified: 1764006498981
+        isPrivate: false
+        sortKey: 1764006498981
+      data:
+        scheme: http
+        base_path: ""
+        host: localhost:8000
 spec:
   contents:
     openapi: 3.1.0
