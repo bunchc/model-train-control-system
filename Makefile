@@ -101,3 +101,77 @@ edge-coverage: ## Run edge controller tests with coverage
 
 check-all: check-docs edge-check ## Run all quality checks (docs + edge)
 	@echo "$(GREEN)All checks passed!$(RESET)"
+
+# ============================================================================
+# Local GitHub Actions Testing (act)
+# ============================================================================
+
+.PHONY: act-install act-list act-test-build act-test-workflows
+
+act-install: ## Install act for local GitHub Actions testing
+	@echo "$(CYAN)Installing act...$(RESET)"
+	@if command -v brew >/dev/null 2>&1; then \
+		brew install act; \
+	else \
+		echo "$(RED)Homebrew not found. Install manually: https://github.com/nektos/act$(RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)act installed. See docs/local-github-actions.md for usage$(RESET)"
+
+act-list: ## List available GitHub Actions workflows
+	@echo "$(CYAN)Available workflows:$(RESET)"
+	@act -l || echo "$(YELLOW)act not installed. Run 'make act-install'$(RESET)"
+
+act-test-build: ## Test Docker image builds locally
+	@echo "$(CYAN)Testing Docker image builds with act...$(RESET)"
+	@if ! command -v act >/dev/null 2>&1; then \
+		echo "$(RED)act not installed. Run 'make act-install' first$(RESET)"; \
+		exit 1; \
+	fi
+	act push -W .github/workflows/build-images.yml.local \
+		-j build-central-api -j build-edge-controller
+
+act-test-workflows: ## Dry-run all local workflows
+	@echo "$(CYAN)Dry-run of all workflows...$(RESET)"
+	@if ! command -v act >/dev/null 2>&1; then \
+		echo "$(RED)act not installed. Run 'make act-install' first$(RESET)"; \
+		exit 1; \
+	fi
+	act -n -W .github/workflows/build-images.yml.local
+
+# ============================================================================
+# Deployment (Ansible)
+# ============================================================================
+
+.PHONY: deploy-help deploy-provision deploy-central deploy-edge deploy-update deploy-status
+
+deploy-help: ## Show deployment help
+	@./scripts/deploy.sh help
+
+deploy-provision: ## Provision Raspberry Pi devices (use HOST=rpi-train-01 to limit)
+	@echo "$(CYAN)Provisioning Raspberry Pi devices...$(RESET)"
+	@if [ -n "$(HOST)" ]; then \
+		./scripts/deploy.sh provision $(HOST); \
+	else \
+		./scripts/deploy.sh provision; \
+	fi
+
+deploy-central: ## Deploy central infrastructure (API + MQTT)
+	@echo "$(CYAN)Deploying central infrastructure...$(RESET)"
+	@./scripts/deploy.sh central
+
+deploy-edge: ## Deploy edge controllers (use HOST=rpi-train-01 to limit)
+	@echo "$(CYAN)Deploying edge controllers...$(RESET)"
+	@if [ -n "$(HOST)" ]; then \
+		./scripts/deploy.sh edge $(HOST); \
+	else \
+		./scripts/deploy.sh edge; \
+	fi
+
+deploy-update: ## Update deployments (use COMPONENT=edge or central)
+	@echo "$(CYAN)Updating deployments...$(RESET)"
+	@./scripts/deploy.sh update $(COMPONENT)
+
+deploy-status: ## Check deployment status
+	@echo "$(CYAN)Checking deployment status...$(RESET)"
+	@./scripts/deploy.sh status

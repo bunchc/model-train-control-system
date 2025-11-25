@@ -1,7 +1,7 @@
 """Configuration management package."""
 
-from config.loader import ConfigLoader, ConfigLoadError
-from config.manager import ConfigManager, ConfigurationError
+from .loader import ConfigLoader, ConfigLoadError
+from .manager import ConfigManager, ConfigurationError
 
 
 __all__ = [

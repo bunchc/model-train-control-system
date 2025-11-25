@@ -25,8 +25,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 # Configuration management
-from config.manager import ConfigManager, ConfigurationError
-from mqtt_client import MQTTClient, MQTTClientError
+from .config.manager import ConfigManager, ConfigurationError
+from .mqtt_client import MQTTClient, MQTTClientError
 
 
 # Configure logging
@@ -40,7 +40,7 @@ LOCAL_DEV = os.getenv("LOCAL_DEV", "false").lower() == "true"
 # Hardware controllers - only import if not in local-dev mode
 if not LOCAL_DEV:
     try:
-        from stepper_hat import StepperMotorHatController
+        from .dc_motor_hat import DCMotorHatController
 
         HARDWARE_AVAILABLE = True
     except ImportError:
@@ -51,10 +51,10 @@ else:
     logger.info("LOCAL_DEV mode enabled, running in simulation mode")
 
 
-class StepperMotorSimulator:
-    """Simulator for stepper motor when hardware is unavailable.
+class DCMotorSimulator:
+    """Simulator for DC motor when hardware is unavailable.
 
-    This class provides a drop-in replacement for StepperMotorHatController
+    This class provides a drop-in replacement for DCMotorHatController
     when running in LOCAL_DEV mode or when hardware modules are not available.
     All methods log their calls but perform no actual hardware operations.
 
@@ -64,13 +64,14 @@ class StepperMotorSimulator:
     - CI/CD pipeline execution without hardware dependencies
     """
 
-    def start(self, speed: int) -> None:
+    def start(self, speed: int = 50, direction: int = 1) -> None:
         """Simulate starting the motor.
 
         Args:
             speed: Motor speed (0-100)
+            direction: Motor direction (1=forward, 0=reverse)
         """
-        logger.info(f"[SIMULATION] start({speed}) called")
+        logger.info(f"[SIMULATION] start(speed={speed}, direction={direction}) called")
 
     def stop(self) -> None:
         """Simulate stopping the motor."""
@@ -83,6 +84,14 @@ class StepperMotorSimulator:
             speed: Motor speed (0-100)
         """
         logger.info(f"[SIMULATION] set_speed({speed}) called")
+
+    def set_direction(self, direction: int) -> None:
+        """Simulate setting motor direction.
+
+        Args:
+            direction: Motor direction (1=forward, 0=reverse)
+        """
+        logger.info(f"[SIMULATION] set_direction({direction}) called")
 
 
 class EdgeControllerApp:
@@ -186,15 +195,15 @@ class EdgeControllerApp:
         logger.info("Initializing hardware controller...")
         if HARDWARE_AVAILABLE:
             try:
-                from stepper_hat import StepperMotorHatController
+                from .dc_motor_hat import DCMotorHatController
 
-                self.hardware_controller = StepperMotorHatController()
+                self.hardware_controller = DCMotorHatController()
                 logger.info("✓ Hardware controller initialized (real hardware)")
             except Exception:
                 logger.exception("✗ Failed to initialize hardware controller")
                 return False
         else:
-            self.hardware_controller = StepperMotorSimulator()
+            self.hardware_controller = DCMotorSimulator()
             logger.info("✓ Hardware controller initialized (SIMULATION MODE)")
 
         # Initialize MQTT client
@@ -276,14 +285,16 @@ class EdgeControllerApp:
         method calls. It implements the command routing logic and error handling.
 
         Supported Commands:
-            - {'action': 'start', 'speed': 50}: Start motor at specified speed
+            - {'action': 'start', 'speed': 50, 'direction': 1}: Start motor at specified speed and direction
             - {'action': 'stop'}: Stop motor immediately
-            - {'action': 'setSpeed', 'speed': 75}: Change motor speed
+            - {'action': 'setSpeed', 'speed': 75}: Change motor speed (maintains current direction)
+            - {'action': 'setDirection', 'direction': 0}: Change motor direction (1=forward, 0=reverse)
 
         Args:
             command: Command dictionary containing:
-                - action (str): Required. Command type (start|stop|setSpeed)
+                - action (str): Required. Command type (start|stop|setSpeed|setDirection)
                 - speed (int): Optional. Motor speed 0-100 (default: 50)
+                - direction (int): Optional. Motor direction 1=forward, 0=reverse (default: 1)
 
         Error Handling:
             - Unknown actions are logged as warnings and ignored
@@ -308,12 +319,17 @@ class EdgeControllerApp:
         # Execute hardware action with exception isolation
         # Each exception is caught to prevent MQTT callback failures
         try:
-            # Command: start motor at specified speed
+            # Command: start motor at specified speed and direction
             if action == "start":
                 speed = command.get("speed", 50)  # Default to 50% if not specified
-                logger.info(f"Executing START command (speed={speed})...")
-                self.hardware_controller.start(speed)
-                logger.info(f"✓ Motor started at speed {speed}")
+                direction = command.get("direction", 1)  # Default to forward if not specified
+                logger.info(
+                    f"Executing START command (speed={speed}, direction={'forward' if direction == 1 else 'reverse'})..."
+                )
+                self.hardware_controller.start(speed, direction)
+                logger.info(
+                    f"✓ Motor started at speed {speed} ({'forward' if direction == 1 else 'reverse'})"
+                )
 
             # Command: stop motor immediately
             elif action == "stop":
@@ -327,6 +343,15 @@ class EdgeControllerApp:
                 logger.info(f"Executing SET_SPEED command (speed={speed})...")
                 self.hardware_controller.set_speed(speed)
                 logger.info(f"✓ Speed set to {speed}")
+
+            # Command: change direction
+            elif action == "setDirection":
+                direction = command.get("direction", 1)  # Default to forward if not specified
+                logger.info(
+                    f"Executing SET_DIRECTION command (direction={'forward' if direction == 1 else 'reverse'})..."
+                )
+                self.hardware_controller.set_direction(direction)
+                logger.info(f"✓ Direction set to {'forward' if direction == 1 else 'reverse'}")
 
             # Unknown action - log warning but don't fail
             # This allows for future command types without code changes

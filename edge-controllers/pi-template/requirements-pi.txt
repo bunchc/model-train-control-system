@@ -1,9 +1,17 @@
+# Runtime dependencies for edge controller on Raspberry Pi
+
+# MQTT Communication
 paho-mqtt==1.6.1
+
+# I2C Communication (for Waveshare Motor HAT)
+smbus2==0.4.3
+
+# HTTP Client
 requests==2.32.5
-fastapi==0.121.3
-uvicorn==0.38.0
-paho-mqtt==1.6.1
-requests==2.32.5
-gpiozero
-lgpio
-pyyaml
+
+# GPIO Control (Pi-specific)
+gpiozero==2.0.1
+lgpio==0.2.2.0
+
+# Configuration
+pyyaml==6.0.1

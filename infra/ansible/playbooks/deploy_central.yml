@@ -1,0 +1,204 @@
+---
+# Deploy Central Infrastructure (central_api + MQTT broker)
+#
+# This playbook deploys the central infrastructure using Docker Compose:
+# - MQTT broker (Mosquitto)
+# - Central API (FastAPI)
+#
+# Usage:
+#   ansible-playbook playbooks/deploy_central.yml --ask-vault-pass
+#   ansible-playbook playbooks/deploy_central.yml --tags mqtt   # Only MQTT
+#   ansible-playbook playbooks/deploy_central.yml --tags api    # Only API
+
+- name: Deploy Central Infrastructure
+  hosts: central
+  gather_facts: true
+
+  vars_files:
+    - ../secrets/vault.yml
+
+  pre_tasks:
+    - name: Verify Docker is installed
+      command: docker --version
+      register: docker_check
+      failed_when: docker_check.rc != 0
+      changed_when: false
+
+    - name: Verify Docker Compose is installed
+      command: docker compose version
+      register: compose_check
+      failed_when: compose_check.rc != 0
+      changed_when: false
+
+  tasks:
+    # ========================================================================
+    # Prepare Deployment Environment
+    # ========================================================================
+
+    - name: Create directories for central infrastructure
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      loop:
+        - /opt/train-control
+        - /opt/train-control/mosquitto
+        - /opt/train-control/central_api
+        - /var/lib/train-control
+        - /var/log/train-control
+
+    # ========================================================================
+    # Log in to GitHub Container Registry
+    # ========================================================================
+
+    - name: Log in to GHCR
+      docker_login:
+        registry: "{{ docker_registry }}"
+        username: "{{ docker_registry_username }}"
+        password: "{{ docker_registry_password }}"
+      when: docker_registry_username is defined
+
+    # ========================================================================
+    # Configure MQTT Broker (Mosquitto)
+    # ========================================================================
+
+    - name: Create Mosquitto configuration
+      copy:
+        dest: /opt/train-control/mosquitto/mosquitto.conf
+        content: |
+          # Mosquitto configuration for Model Train Control System
+
+          listener {{ mqtt_port }}
+          allow_anonymous false
+          password_file /mosquitto/config/passwords
+
+          # WebSocket support
+          listener {{ mqtt_websocket_port }}
+          protocol websockets
+
+          # Persistence
+          persistence true
+          persistence_location /mosquitto/data/
+
+          # Logging
+          log_dest file /mosquitto/log/mosquitto.log
+          log_dest stdout
+          log_type all
+          log_timestamp true
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+      tags: mqtt
+
+    - name: Create Mosquitto password file
+      shell: |
+        docker run --rm -v /opt/train-control/mosquitto:/mosquitto/config eclipse-mosquitto:latest \
+          mosquitto_passwd -b -c /mosquitto/config/passwords edge-controller {{ mqtt_password }}
+      args:
+        creates: /opt/train-control/mosquitto/passwords
+      tags: mqtt
+
+    # ========================================================================
+    # Deploy with Docker Compose
+    # ========================================================================
+
+    - name: Copy docker-compose.yml to host
+      copy:
+        src: ../../docker/docker-compose.yml
+        dest: /opt/train-control/docker-compose.yml
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Create .env file for Docker Compose
+      copy:
+        dest: /opt/train-control/.env
+        content: |
+          # Environment variables for Docker Compose
+          MQTT_PORT={{ mqtt_port }}
+          MQTT_WEBSOCKET_PORT={{ mqtt_websocket_port }}
+          CENTRAL_API_PORT={{ central_api_port }}
+          COMPOSE_PROJECT_NAME={{ compose_project_name | default('train-control') }}
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+
+    - name: Pull latest images
+      community.docker.docker_compose_v2:
+        project_src: /opt/train-control
+        pull: always
+      register: pull_result
+      changed_when: pull_result.changed
+
+    - name: Deploy services with Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: /opt/train-control
+        state: present
+        remove_orphans: yes
+      register: deploy_result
+
+    # ========================================================================
+    # Health Checks
+    # ========================================================================
+
+    - name: Wait for MQTT broker to be ready
+      wait_for:
+        host: localhost
+        port: "{{ mqtt_port }}"
+        state: started
+        delay: 5
+        timeout: 60
+      tags: mqtt
+
+    - name: Wait for Central API to be ready
+      uri:
+        url: "http://localhost:{{ central_api_port }}/api/ping"
+        status_code: 200
+        timeout: 5
+      register: api_health
+      until: api_health.status == 200
+      retries: 12
+      delay: 5
+      tags: api
+
+    # ========================================================================
+    # Deployment Summary
+    # ========================================================================
+
+    - name: Get running containers
+      command: docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+      register: containers
+      changed_when: false
+
+    - name: Show deployment summary
+      debug:
+        msg:
+          - "✅ Central infrastructure deployed successfully!"
+          - ""
+          - "Services:"
+          - "  MQTT Broker: {{ ansible_host }}:{{ mqtt_port }}"
+          - "  MQTT WebSocket: {{ ansible_host }}:{{ mqtt_websocket_port }}"
+          - "  Central API: http://{{ ansible_host }}:{{ central_api_port }}"
+          - "  Health Check: http://{{ ansible_host }}:{{ central_api_port }}/api/ping"
+          - ""
+          - "Running containers:"
+          - "{{ containers.stdout }}"
+          - ""
+          - "Next steps:"
+          - "1. Test API: curl http://{{ ansible_host }}:{{ central_api_port }}/api/ping"
+          - "2. Deploy edge controllers: ansible-playbook playbooks/deploy_edge.yml"
+          - "3. Monitor logs: docker compose -f /opt/train-control/docker-compose.yml logs -f"
+
+  post_tasks:
+    - name: Save deployment timestamp
+      copy:
+        dest: /opt/train-control/.deployed
+        content: |
+          Deployed: {{ ansible_date_time.iso8601 }}
+          By: {{ ansible_user }}
+          Version: latest
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'

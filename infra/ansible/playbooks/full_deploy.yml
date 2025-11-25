@@ -1,0 +1,344 @@
+---
+# Full System Deployment - Teardown and Redeploy
+#
+# This playbook performs a complete teardown and redeploy of:
+# 1. Central infrastructure (MQTT + Central API) on Mac
+# 2. Edge controller on Raspberry Pi
+#
+# Usage:
+#   ansible-playbook playbooks/full_deploy.yml --ask-vault-pass
+
+- name: Full System Deployment
+  hosts: all
+  gather_facts: true
+
+  vars_files:
+    - ../secrets/vault.yml
+
+  vars:
+    project_root: "{{ playbook_dir }}/../../.."
+
+  tasks:
+    - name: Display deployment plan
+      debug:
+        msg: |
+          ========================================
+          FULL SYSTEM DEPLOYMENT
+          ========================================
+          Phase 1: Teardown existing deployment
+          Phase 2: Deploy MQTT broker
+          Phase 3: Deploy Central API
+          Phase 4: Deploy Edge Controller
+          ========================================
+
+# ============================================================================
+# PHASE 1: TEARDOWN
+# ============================================================================
+
+- name: Teardown - Central Infrastructure
+  hosts: central
+  gather_facts: false
+
+  vars:
+    project_root: "{{ playbook_dir }}/../../.."
+
+  tasks:
+    - name: Stop and remove central containers
+      shell: |
+        cd {{ project_root }}/infra/docker
+        docker compose --profile local-dev down -v
+      ignore_errors: true
+      changed_when: true
+
+- name: Teardown - Edge Controllers
+  hosts: edge
+  gather_facts: false
+
+  tasks:
+    - name: Stop and remove edge-controller container
+      shell: |
+        docker stop edge-controller 2>/dev/null || true
+        docker rm edge-controller 2>/dev/null || true
+      ignore_errors: true
+      changed_when: true
+
+    - name: Clean up build artifacts
+      file:
+        path: /tmp/edge-build
+        state: absent
+
+# ============================================================================
+# PHASE 2: DEPLOY MQTT BROKER
+# ============================================================================
+
+- name: Deploy MQTT Broker
+  hosts: central
+  gather_facts: true
+
+  vars:
+    project_root: "{{ playbook_dir }}/../../.."
+
+  tasks:
+    - name: Create mosquitto config directory
+      file:
+        path: "{{ project_root }}/infra/docker/mosquitto"
+        state: directory
+        mode: '0755'
+
+    - name: Deploy MQTT broker via Docker Compose
+      shell: |
+        cd {{ project_root }}/infra/docker
+        docker compose --profile local-dev up -d mqtt
+      changed_when: true
+
+    - name: Wait for MQTT broker to be ready
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: 1883
+        delay: 2
+        timeout: 30
+
+    - name: Verify MQTT broker is running
+      shell: docker ps --filter "name=mqtt" --format "{% raw %}{{.Status}}{% endraw %}"
+      register: mqtt_status
+      changed_when: false
+
+    - name: Display MQTT status
+      debug:
+        msg: "MQTT Broker Status: {{ mqtt_status.stdout }}"
+
+# ============================================================================
+# PHASE 3: DEPLOY CENTRAL API
+# ============================================================================
+
+- name: Deploy Central API
+  hosts: central
+  gather_facts: false
+
+  vars:
+    project_root: "{{ playbook_dir }}/../../.."
+
+  tasks:
+    - name: Deploy Central API via Docker Compose
+      shell: |
+        cd {{ project_root }}/infra/docker
+        docker compose --profile local-dev up -d --build central_api
+      changed_when: true
+
+    - name: Wait for Central API to be healthy
+      uri:
+        url: "http://{{ ansible_host }}:8000/api/ping"
+        method: GET
+        status_code: 200
+      register: result
+      until: result.status == 200
+      retries: 30
+      delay: 2
+
+    - name: Display Central API status
+      debug:
+        msg: "Central API is healthy and responding"
+
+# ============================================================================
+# PHASE 4: DEPLOY EDGE CONTROLLER
+# ============================================================================
+
+- name: Deploy Edge Controller
+  hosts: edge
+  gather_facts: true
+
+  vars:
+    project_root: "{{ playbook_dir }}/../../.."
+    edge_build_dir: /tmp/edge-build
+    mqtt_broker_host: "{{ hostvars[groups['central'][0]]['ansible_host'] }}"
+    central_api_host: "{{ hostvars[groups['central'][0]]['ansible_host'] }}"
+
+  vars_files:
+    - ../secrets/vault.yml
+
+  tasks:
+    - name: Create edge build directory
+      file:
+        path: "{{ edge_build_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy edge controller application code
+      synchronize:
+        src: "{{ project_root }}/edge-controllers/pi-template/app/"
+        dest: "{{ edge_build_dir }}/app/"
+        delete: true
+
+    - name: Copy requirements file
+      copy:
+        src: "{{ project_root }}/edge-controllers/pi-template/requirements-pi.txt"
+        dest: "{{ edge_build_dir }}/requirements-pi.txt"
+      when: build_edge_image | default(true)
+
+    - name: Create config template
+      copy:
+        content: |
+          # Edge Controller Service Configuration
+          # This is the STATIC configuration loaded at startup
+
+          mqtt:
+            broker: "${MQTT_BROKER}"
+            port: ${MQTT_PORT}
+            username: "${MQTT_USER}"
+            password: "${MQTT_PASS}"
+
+          central_api_host: "${CENTRAL_API_HOST}"
+          central_api_port: ${CENTRAL_API_PORT}
+
+          controller:
+            train_id: "${TRAIN_ID}"
+            hardware_type: "${HARDWARE_TYPE}"
+            simulation_mode: ${SIMULATION_MODE}
+
+          logging:
+            level: INFO
+        dest: "{{ edge_build_dir }}/edge-controller.conf.template"
+
+    - name: Copy Dockerfile
+      copy:
+        src: "{{ project_root }}/edge-controllers/pi-template/Dockerfile"
+        dest: "{{ edge_build_dir }}/Dockerfile"
+      when: build_edge_image | default(true)
+
+    - name: Copy config template
+      copy:
+        src: "{{ project_root }}/edge-controllers/pi-template/edge-controller.conf"
+        dest: "{{ edge_build_dir }}/edge-controller.conf"
+      # Always copy config file - needed for container volume mount
+
+    - name: Check if edge-controller image exists
+      shell: docker images -q edge-controller:latest
+      register: edge_image_exists
+      changed_when: false
+      when: not (build_edge_image | default(true))
+
+    - name: Log message when image not present and build_edge_image is false
+      debug:
+        msg: "Edge controller image not found locally. Building image despite build_edge_image=false..."
+      when:
+        - not (build_edge_image | default(true))
+        - edge_image_exists.stdout == ""
+
+    - name: Build edge controller Docker image (forced build or image missing)
+      shell: |
+        cd {{ edge_build_dir }}
+        docker build --no-cache -t edge-controller:latest . 2>&1 | tee /tmp/docker-build.log
+      changed_when: true
+      when: (build_edge_image | default(true)) or (edge_image_exists.stdout == "")
+      async: 1800  # 30 minutes timeout for ARM build
+      poll: 15     # Check every 15 seconds
+
+    - name: Skip build message
+      debug:
+        msg: "Using existing edge-controller:latest image (build_edge_image=false and image present)"
+      when:
+        - not (build_edge_image | default(true))
+        - edge_image_exists.stdout != ""
+
+    - name: Stop existing edge controller container
+      docker_container:
+        name: edge-controller
+        state: stopped
+      failed_when: false
+
+    - name: Remove existing edge controller container
+      docker_container:
+        name: edge-controller
+        state: absent
+      failed_when: false
+
+    - name: Run edge controller container
+      docker_container:
+        name: edge-controller
+        image: edge-controller:latest
+        state: started
+        restart_policy: unless-stopped
+        privileged: true
+        devices:
+          - /dev/i2c-1:/dev/i2c-1
+        env:
+          MQTT_BROKER_HOST: "{{ mqtt_broker_host }}"
+          MQTT_BROKER_PORT: "1883"
+          MQTT_BROKER_PASSWORD: "{{ mqtt_password }}"
+          CENTRAL_API_HOST: "{{ central_api_host }}"
+          CENTRAL_API_PORT: "8000"
+          CONTROLLER_ID: "65d2a59c-65a2-476c-9094-af2a726f7af6"
+        volumes:
+          - "{{ edge_build_dir }}/edge-controller.conf:/workspace/app/edge-controller.conf:ro"
+
+    - name: Wait for edge controller to initialize
+      pause:
+        seconds: 5
+
+    - name: Check edge controller logs
+      shell: docker logs edge-controller 2>&1 | tail -20
+      register: edge_logs
+      changed_when: false
+
+    - name: Display edge controller status
+      debug:
+        msg: "{{ edge_logs.stdout_lines }}"
+
+# ============================================================================
+# PHASE 5: VERIFICATION
+# ============================================================================
+
+- name: Verify Deployment
+  hosts: central
+  gather_facts: false
+
+  tasks:
+    - name: Test Central API health
+      uri:
+        url: "http://{{ ansible_host }}:8000/api/ping"
+        method: GET
+        return_content: true
+      register: api_health
+
+    - name: Display API health
+      debug:
+        msg: "API Health: {{ api_health.json }}"
+
+    - name: List registered controllers
+      uri:
+        url: "http://{{ ansible_host }}:8000/api/controllers"
+        method: GET
+        return_content: true
+      register: controllers
+
+    - name: Display registered controllers
+      debug:
+        msg: "Registered Controllers: {{ controllers.json | length }}"
+
+    - name: Send test command to train
+      uri:
+        url: "http://{{ ansible_host }}:8000/api/trains/default_train/command"
+        method: POST
+        body_format: json
+        body:
+          action: setSpeed
+          speed: 25
+        status_code: 200
+      register: test_command
+
+    - name: Display test command result
+      debug:
+        msg: "Test Command Result: {{ test_command.json }}"
+
+    - name: Final deployment summary
+      debug:
+        msg: |
+          ========================================
+          DEPLOYMENT COMPLETE
+          ========================================
+          MQTT Broker: {{ ansible_host }}:1883
+          Central API: http://{{ ansible_host }}:8000
+          Controllers: {{ controllers.json | length }}
+
+          Test command sent successfully!
+          ========================================
