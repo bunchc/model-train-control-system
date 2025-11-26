@@ -191,5 +191,11 @@ scripts/dev_up.sh.log
 *.orig
 *.rej
 
+# act (GitHub Actions local testing)
+.secrets
+.env.act
+event.json
+/tmp/act-artifacts
+
 # Node.js
 # End of .gitignore

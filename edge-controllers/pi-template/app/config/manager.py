@@ -29,8 +29,8 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
-from api.client import APIRegistrationError, CentralAPIClient
-from config.loader import ConfigLoader, ConfigLoadError
+from ..api.client import APIRegistrationError, CentralAPIClient
+from .loader import ConfigLoader, ConfigLoadError
 
 
 logger = logging.getLogger(__name__)
@@ -230,11 +230,13 @@ class ConfigManager:
 
         Refresh Flow:
             1. Extract UUID from cached config
-            2. Download fresh runtime config from API using UUID
-            3. If download succeeds:
+            2. Verify controller is actually registered in the Central API
+            3. If not registered, re-register as a new controller
+            4. Download fresh runtime config from API using UUID
+            5. If download succeeds:
                a. Save fresh config to cache
                b. Return fresh config
-            4. If download fails:
+            6. If download fails:
                a. Validate cached config has required fields
                b. If valid, return cached config (stale but functional)
                c. If invalid, return None (wait for admin)
@@ -256,6 +258,16 @@ class ConfigManager:
         # Extract UUID from cached config (controller was registered previously)
         controller_uuid = cached_config["uuid"]
         logger.info(f"Found cached config with UUID {controller_uuid}")
+
+        # Verify the controller is actually registered in the Central API
+        # The database may have been reset, or the UUID may be stale
+        if not self.api_client.check_controller_exists(controller_uuid):
+            logger.warning(
+                f"Controller UUID {controller_uuid} not found in Central API. "
+                "Database may have been reset. Re-registering as new controller."
+            )
+            # Controller not found - re-register
+            return self._register_new_controller()
 
         # Try to download fresh config from API
         # This ensures we have latest train assignments, MQTT broker updates, etc.
@@ -355,7 +367,6 @@ class ConfigManager:
         )
         return self._service_config, None
 
-    @staticmethod
     def _is_runtime_config_complete(self, config: dict[str, Any]) -> bool:
         """Check if runtime config has all required fields.
 

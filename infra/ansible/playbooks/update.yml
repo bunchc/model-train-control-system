@@ -1,0 +1,80 @@
+---
+# Update Deployed Services
+#
+# Pull latest images and restart services
+#
+# Usage:
+#   ansible-playbook playbooks/update.yml --ask-vault-pass
+#   ansible-playbook playbooks/update.yml --tags central
+#   ansible-playbook playbooks/update.yml --tags edge --limit rpi-train-01
+
+- name: Update Central Infrastructure
+  hosts: central
+  become: true
+  gather_facts: false
+  tags: central
+
+  vars_files:
+    - ../secrets/vault.yml
+
+  tasks:
+    - name: Pull latest central images
+      community.docker.docker_compose_v2:
+        project_src: /opt/train-control
+        pull: always
+
+    - name: Restart services with new images
+      community.docker.docker_compose_v2:
+        project_src: /opt/train-control
+        state: restarted
+
+    - name: Wait for API to be healthy
+      uri:
+        url: "http://localhost:{{ central_api_port }}/api/ping"
+        status_code: 200
+      register: api_health
+      until: api_health.status == 200
+      retries: 12
+      delay: 5
+
+    - name: Update deployment timestamp
+      lineinfile:
+        path: /opt/train-control/.deployed
+        regexp: '^Deployed:'
+        line: "Deployed: {{ ansible_date_time.iso8601 }}"
+
+- name: Update Edge Controllers
+  hosts: edge
+  become: true
+  gather_facts: false
+  tags: edge
+
+  vars_files:
+    - ../secrets/vault.yml
+
+  tasks:
+    - name: Pull latest edge controller image
+      docker_image:
+        name: "{{ edge_controller_image }}"
+        tag: "{{ edge_controller_tag }}"
+        source: pull
+        force_source: yes
+      register: pull_result
+
+    - name: Restart container if image updated
+      docker_container:
+        name: edge-controller
+        state: started
+        restart: yes
+      when: pull_result.changed
+
+    - name: Update deployment timestamp
+      lineinfile:
+        path: /opt/train-control/.deployed
+        regexp: '^Deployed:'
+        line: "Deployed: {{ ansible_date_time.iso8601 }}"
+      when: pull_result.changed
+
+    - name: Show update status
+      debug:
+        msg: "{{ 'Updated to new version' if pull_result.changed else 'Already on latest version' }}"

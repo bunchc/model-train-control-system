@@ -1,0 +1,135 @@
+---
+# Rollback Deployment to Previous Version
+#
+# This playbook rolls back deployments to a previous image tag
+#
+# Usage:
+#   ansible-playbook playbooks/rollback.yml --extra-vars "version=v1.2.0"
+#   ansible-playbook playbooks/rollback.yml --extra-vars "version=previous" --tags edge
+#   ansible-playbook playbooks/rollback.yml --extra-vars "version=sha-abc123" --tags central
+
+- name: Rollback Central Infrastructure
+  hosts: central
+  become: true
+  gather_facts: false
+  tags: central
+
+  vars_files:
+    - ../secrets/vault.yml
+
+  vars:
+    rollback_version: "{{ version | default('previous') }}"
+
+  tasks:
+    - name: Get current deployment info
+      slurp:
+        src: /opt/train-control/.deployed
+      register: current_deployment
+      failed_when: false
+
+    - name: Show current version
+      debug:
+        msg: "Current deployment: {{ current_deployment.content | b64decode }}"
+      when: current_deployment.content is defined
+
+    - name: Rollback Docker Compose services
+      community.docker.docker_compose_v2:
+        project_src: /opt/train-control
+        state: present
+        pull: never
+      environment:
+        COMPOSE_IMAGE_TAG: "{{ rollback_version }}"
+      when: rollback_version != 'previous'
+
+    - name: Restart services to apply rollback
+      community.docker.docker_compose_v2:
+        project_src: /opt/train-control
+        state: restarted
+      when: rollback_version != 'previous'
+
+    - name: Show rollback summary
+      debug:
+        msg:
+          - "✅ Central infrastructure rolled back"
+          - "Version: {{ rollback_version }}"
+          - "Check services: docker compose -f /opt/train-control/docker-compose.yml ps"
+
+- name: Rollback Edge Controllers
+  hosts: edge
+  become: true
+  gather_facts: false
+  tags: edge
+
+  vars_files:
+    - ../secrets/vault.yml
+
+  vars:
+    rollback_version: "{{ version | default('previous') }}"
+    edge_container_name: edge-controller
+
+  tasks:
+    - name: Get current deployment info
+      slurp:
+        src: /opt/train-control/.deployed
+      register: current_deployment
+      failed_when: false
+
+    - name: Show current version
+      debug:
+        msg: "Current deployment: {{ current_deployment.content | b64decode }}"
+      when: current_deployment.content is defined
+
+    - name: Pull rollback image
+      docker_image:
+        name: "{{ edge_controller_image }}"
+        tag: "{{ rollback_version }}"
+        source: pull
+      when: rollback_version != 'previous'
+
+    - name: Stop current container
+      docker_container:
+        name: "{{ edge_container_name }}"
+        state: stopped
+
+    - name: Remove current container
+      docker_container:
+        name: "{{ edge_container_name }}"
+        state: absent
+
+    - name: Deploy rollback version
+      docker_container:
+        name: "{{ edge_container_name }}"
+        image: "{{ edge_controller_image }}:{{ rollback_version }}"
+        state: started
+        restart_policy: unless-stopped
+        privileged: "{{ hardware_type | default('generic') != 'simulator' }}"
+        devices: "{{ ['/dev/gpiomem:/dev/gpiomem'] if hardware_type | default('generic') != 'simulator' else [] }}"
+        volumes:
+          - /opt/train-control/config:/app/config:ro
+          - /opt/train-control/logs:/app/logs
+          - /var/lib/train-control:/app/data
+        env:
+          TRAIN_ID: "{{ train_id }}"
+          MQTT_BROKER: "{{ mqtt_broker }}"
+          MQTT_PORT: "{{ mqtt_port }}"
+          MQTT_USERNAME: "{{ mqtt_username }}"
+          MQTT_PASSWORD: "{{ mqtt_password }}"
+          CENTRAL_API_URL: "{{ central_api_url }}"
+
+    - name: Wait for container to start
+      command: docker ps -f name={{ edge_container_name }} --format "{{.Status}}"
+      register: container_check
+      until: "'Up' in container_check.stdout"
+      retries: 5
+      delay: 2
+      changed_when: false
+
+    - name: Show rollback summary
+      debug:
+        msg:
+          - "✅ Edge controller rolled back"
+          - "Device: {{ inventory_hostname }}"
+          - "Train ID: {{ train_id }}"
+          - "Version: {{ rollback_version }}"
+          - "Check status: docker ps -f name={{ edge_container_name }}"
+          - "Check logs: docker logs {{ edge_container_name }}"

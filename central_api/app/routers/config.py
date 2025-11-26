@@ -341,6 +341,8 @@ def get_controller_runtime_config(uuid: str):
         - status_topic: MQTT topic for status updates
         - commands_topic: MQTT topic for commands
     """
+    from app.config import get_settings
+
     logger.info(f"GET /controllers/{uuid}/config called")
 
     ec = _get_config().get_edge_controller(uuid)
@@ -352,15 +354,18 @@ def get_controller_runtime_config(uuid: str):
     # For now, use the first train if available
     train_id = ec.trains[0].id if ec.trains else "default_train"
 
+    # Get MQTT broker configuration from settings
+    settings = get_settings()
+
     runtime_config = {
         "uuid": uuid,
         "name": ec.name,
         "train_id": train_id,
         "mqtt_broker": {
-            "host": "mqtt",  # Docker service name
-            "port": 1883,
-            "username": None,
-            "password": None,
+            "host": settings.mqtt_broker_host,
+            "port": settings.mqtt_broker_port,
+            "username": "edge-controller",
+            "password": "/yameCjLOFwbskcltRRZZUBWFBg/Q+PAIPNZZz7Kgpg=",
         },
         "status_topic": f"trains/{train_id}/status",
         "commands_topic": f"trains/{train_id}/commands",

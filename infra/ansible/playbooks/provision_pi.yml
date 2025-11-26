@@ -1,0 +1,246 @@
+---
+# Provision Raspberry Pi Devices for Edge Controllers
+#
+# This playbook prepares RPi devices for deployment:
+# - Sets hostname
+# - Installs Docker
+# - Configures mDNS (Avahi)
+# - Sets up user permissions
+# - Configures timezone
+#
+# Usage:
+#   ansible-playbook playbooks/provision_pi.yml --ask-vault-pass
+#   ansible-playbook playbooks/provision_pi.yml --limit rpi-train-01
+
+- name: Provision Raspberry Pi Edge Devices
+  hosts: edge
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - ../secrets/vault.yml
+
+  pre_tasks:
+    - name: Wait for system to be ready
+      wait_for_connection:
+        timeout: 300
+
+    - name: Gather facts
+      setup:
+
+    - name: Check if running on Raspberry Pi
+      assert:
+        that:
+          - ansible_architecture == "aarch64" or ansible_architecture == "armv7l"
+        fail_msg: "This playbook is designed for Raspberry Pi (ARM architecture)"
+        success_msg: "Detected Raspberry Pi: {{ ansible_architecture }}"
+
+  tasks:
+    # ========================================================================
+    # System Configuration
+    # ========================================================================
+
+    - name: Set hostname
+      hostname:
+        name: "{{ inventory_hostname }}"
+
+    - name: Update /etc/hosts with new hostname
+      lineinfile:
+        path: /etc/hosts
+        regexp: '^127\.0\.1\.1'
+        line: "127.0.1.1 {{ inventory_hostname }} {{ inventory_hostname }}.local"
+        state: present
+
+    - name: Set timezone
+      community.general.timezone:
+        name: "{{ timezone | default('UTC') }}"
+
+    # ========================================================================
+    # Package Management
+    # ========================================================================
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Upgrade all packages
+      apt:
+        upgrade: dist
+        autoremove: yes
+        autoclean: yes
+      register: apt_upgrade
+      changed_when: apt_upgrade.changed
+
+    - name: Install required system packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - git
+          - vim
+          - htop
+          - python3
+          - python3-pip
+          - avahi-daemon      # mDNS/Bonjour
+          - avahi-utils
+          - libnss-mdns       # mDNS resolution
+        state: present
+
+    # ========================================================================
+    # mDNS Configuration (Avahi)
+    # ========================================================================
+
+    - name: Enable and start Avahi daemon
+      systemd:
+        name: avahi-daemon
+        enabled: yes
+        state: started
+
+    - name: Configure Avahi to publish all interfaces
+      lineinfile:
+        path: /etc/avahi/avahi-daemon.conf
+        regexp: '^#?allow-interfaces='
+        line: '#allow-interfaces=eth0'
+        state: present
+      notify: restart avahi
+
+    # ========================================================================
+    # Docker Installation
+    # ========================================================================
+
+    - name: Check if Docker is installed
+      command: docker --version
+      register: docker_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Create keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+      when: docker_installed.rc != 0
+
+    - name: Add Docker GPG key
+      shell: |
+        curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        chmod a+r /etc/apt/keyrings/docker.gpg
+      args:
+        creates: /etc/apt/keyrings/docker.gpg
+      when: docker_installed.rc != 0
+
+    - name: Add Docker repository (use bookworm for trixie compatibility)
+      apt_repository:
+        repo: "deb [arch=armhf signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable"
+        state: present
+        filename: docker
+      when: docker_installed.rc != 0
+
+    - name: Install Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+      when: docker_installed.rc != 0
+
+    - name: Ensure Docker is started and enabled
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+    - name: Add user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+      notify: inform user about relogin
+
+    # ========================================================================
+    # GPIO Access (if needed)
+    # ========================================================================
+
+    - name: Add user to gpio group (if exists)
+      user:
+        name: "{{ ansible_user }}"
+        groups: gpio
+        append: yes
+      when: hardware_type | default('generic') != 'simulator'
+      failed_when: false
+
+    # ========================================================================
+    # Create directories for edge controller
+    # ========================================================================
+
+    - name: Create edge controller directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      loop:
+        - /opt/train-control
+        - /opt/train-control/logs
+        - /opt/train-control/config
+        - /var/lib/train-control
+
+    # ========================================================================
+    # System Optimization for RPi
+    # ========================================================================
+
+    - name: Disable swap (for SD card longevity)
+      command: dphys-swapfile swapoff
+      when: ansible_swaptotal_mb > 0
+      failed_when: false
+      changed_when: false
+
+    - name: Disable swap permanently
+      systemd:
+        name: dphys-swapfile
+        enabled: no
+        state: stopped
+      failed_when: false
+
+    # ========================================================================
+    # Validation
+    # ========================================================================
+
+    - name: Verify Docker installation
+      command: docker run --rm hello-world
+      register: docker_test
+      changed_when: false
+      failed_when: docker_test.rc != 0
+
+    - name: Show provisioning summary
+      debug:
+        msg:
+          - "✅ Raspberry Pi provisioned successfully!"
+          - "Hostname: {{ inventory_hostname }}"
+          - "mDNS: {{ inventory_hostname }}.local"
+          - "Architecture: {{ ansible_architecture }}"
+          - "Docker version: {{ docker_installed.stdout | default('Installed') }}"
+          - "Train ID: {{ train_id | default('Not assigned') }}"
+          - ""
+          - "Next steps:"
+          - "1. Log out and back in for docker group to take effect"
+          - "2. Run deploy_edge.yml to deploy the edge controller"
+
+  handlers:
+    - name: restart avahi
+      systemd:
+        name: avahi-daemon
+        state: restarted
+
+    - name: inform user about relogin
+      debug:
+        msg: "User {{ ansible_user }} added to docker group. Re-login required for changes to take effect."

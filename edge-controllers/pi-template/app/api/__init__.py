@@ -1,6 +1,6 @@
 """API client package."""
 
-from api.client import (
+from .client import (
     APIClientError,
     APIConnectionError,
     APIRegistrationError,

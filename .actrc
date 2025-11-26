@@ -1,0 +1,19 @@
+# act configuration for local GitHub Actions testing
+#
+# This file configures default behavior for the `act` tool
+# See: https://github.com/nektos/act
+
+# Use medium-sized Docker image (good balance of size vs features)
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# Use local architecture (faster for testing)
+--container-architecture linux/amd64
+
+# Store artifacts locally
+--artifact-server-path /tmp/act-artifacts
+
+# Don't use GitHub API (work offline)
+--no-github-api
+
+# Bind Docker socket (for Docker-in-Docker)
+--bind
