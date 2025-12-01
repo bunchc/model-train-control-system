@@ -40,7 +40,7 @@ LOCAL_DEV = os.getenv("LOCAL_DEV", "false").lower() == "true"
 # Hardware controllers - only import if not in local-dev mode
 if not LOCAL_DEV:
     try:
-        from .dc_motor_hat import DCMotorHatController
+        from .dc_motor_hat import DCMotorHatController  # noqa: F401
 
         HARDWARE_AVAILABLE = True
     except ImportError:
@@ -129,8 +129,8 @@ class EdgeControllerApp:
         self.hardware_controller: Optional[Any] = None
         self.train_id: Optional[str] = None
 
-    def initialize(self) -> bool:
-        """Initialize application components.
+    def initialize(self) -> bool:  # noqa: PLR0915
+        """Initialize edge controller components.
 
         Returns:
             True if initialization successful, False otherwise
@@ -360,12 +360,16 @@ class EdgeControllerApp:
                 logger.info(
                     f"✓ Motor started at speed {speed} ({'forward' if direction == 1 else 'reverse'})"
                 )
+                # Publish status update after command execution
+                self._publish_current_status()
 
             # Command: stop motor immediately
             elif action == "stop":
                 logger.info("Executing STOP command...")
                 self.hardware_controller.stop()
                 logger.info("✓ Motor stopped")
+                # Publish status update after command execution
+                self._publish_current_status()
 
             # Command: change speed without stopping
             elif action == "setSpeed":
@@ -385,6 +389,8 @@ class EdgeControllerApp:
                     logger.info(f"Executing SET_SPEED command (speed={speed})...")
                     self.hardware_controller.set_speed(speed)
                     logger.info(f"✓ Speed set to {speed}")
+                # Publish status update after command execution
+                self._publish_current_status()
 
             # Command: change direction
             elif action == "setDirection":
@@ -394,6 +400,8 @@ class EdgeControllerApp:
                 )
                 self.hardware_controller.set_direction(direction)
                 logger.info(f"✓ Direction set to {'forward' if direction == 1 else 'reverse'}")
+                # Publish status update after command execution
+                self._publish_current_status()
 
             # Unknown action - log warning but don't fail
             # This allows for future command types without code changes
@@ -404,6 +412,44 @@ class EdgeControllerApp:
             # Catch all hardware exceptions to prevent MQTT loop crash
             # Log error but allow controller to continue processing commands
             logger.exception("Hardware command execution failed")
+
+    def _publish_current_status(self) -> None:
+        """Publish current train status to MQTT.
+
+        Collects current state from hardware controller and publishes
+        to the status topic. This is called after command execution to
+        notify subscribers of state changes.
+
+        Status includes:
+            - train_id: Train identifier
+            - speed: Current motor speed (0-100)
+            - direction: Current direction (FORWARD/BACKWARD)
+            - timestamp: ISO 8601 timestamp
+
+        Note:
+            Errors during status publishing are caught and logged to prevent
+            command execution failures.
+        """
+        try:
+            import datetime
+
+            # Build status payload from current hardware state
+            status = {
+                "train_id": self.train_id,
+                "speed": self.hardware_controller.current_speed,
+                "direction": "FORWARD"
+                if self.hardware_controller.current_direction == 1
+                else "BACKWARD",
+                "timestamp": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+            }
+
+            # Publish to MQTT broker
+            self.mqtt_client.publish_status(status)
+            logger.info(f"✓ Published status: {status}")
+
+        except Exception:
+            # Log error but don't fail - status publishing is best-effort
+            logger.exception("Failed to publish status update")
 
     def run(self) -> None:
         """Run the main application loop."""
