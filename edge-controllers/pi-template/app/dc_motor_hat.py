@@ -443,6 +443,22 @@ class DCMotorHatController:
         self.current_speed = 0
         logger.info("Motor stopped")
 
+    def get_speed(self) -> int:
+        """Get the current motor speed.
+
+        Returns:
+            Current motor speed (0-100)
+        """
+        return self.current_speed
+
+    def get_direction(self) -> int:
+        """Get the current motor direction.
+
+        Returns:
+            Current motor direction (1=forward, 0=reverse)
+        """
+        return self.current_direction
+
     def cleanup(self) -> None:
         """Release all I2C resources.
 

@@ -52,29 +52,31 @@ else:
 
 
 class DCMotorSimulator:
-    """Simulator for DC motor when hardware is unavailable.
+    """Simulation implementation of DC motor controller for testing/development.
 
-    This class provides a drop-in replacement for DCMotorHatController
-    when running in LOCAL_DEV mode or when hardware modules are not available.
-    All methods log their calls but perform no actual hardware operations.
-
-    This enables:
-    - Development without physical Raspberry Pi hardware
-    - Testing on non-ARM platforms (x86, macOS, etc.)
-    - CI/CD pipeline execution without hardware dependencies
+    This class provides the same interface as DCMotorHatController but logs
+    all operations instead of controlling actual hardware.
     """
 
-    def start(self, speed: int = 50, direction: int = 1) -> None:
+    def __init__(self) -> None:
+        """Initialize the simulator."""
+        self.current_speed = 0
+        self.current_direction = 1  # 1=forward, 0=reverse
+
+    def start(self, speed: int, direction: int) -> None:
         """Simulate starting the motor.
 
         Args:
             speed: Motor speed (0-100)
             direction: Motor direction (1=forward, 0=reverse)
         """
+        self.current_speed = speed
+        self.current_direction = direction
         logger.info(f"[SIMULATION] start(speed={speed}, direction={direction}) called")
 
     def stop(self) -> None:
         """Simulate stopping the motor."""
+        self.current_speed = 0
         logger.info("[SIMULATION] stop() called")
 
     def set_speed(self, speed: int) -> None:
@@ -83,6 +85,7 @@ class DCMotorSimulator:
         Args:
             speed: Motor speed (0-100)
         """
+        self.current_speed = speed
         logger.info(f"[SIMULATION] set_speed({speed}) called")
 
     def set_direction(self, direction: int) -> None:
@@ -91,7 +94,24 @@ class DCMotorSimulator:
         Args:
             direction: Motor direction (1=forward, 0=reverse)
         """
+        self.current_direction = direction
         logger.info(f"[SIMULATION] set_direction({direction}) called")
+
+    def get_speed(self) -> int:
+        """Get the current motor speed.
+
+        Returns:
+            Current motor speed (0-100)
+        """
+        return self.current_speed
+
+    def get_direction(self) -> int:
+        """Get the current motor direction.
+
+        Returns:
+            Current motor direction (1=forward, 0=reverse)
+        """
+        return self.current_direction
 
 
 class EdgeControllerApp:
@@ -217,6 +237,9 @@ class EdgeControllerApp:
             self.hardware_controller = DCMotorSimulator()
             logger.info("✓ Hardware controller initialized (SIMULATION MODE)")
 
+        # Initialize current speed tracking from hardware state
+        self.current_speed = self.hardware_controller.get_speed()
+
         # Initialize MQTT client
         logger.info("Setting up MQTT client...")
         try:
@@ -324,13 +347,10 @@ class EdgeControllerApp:
             target_speed: Target speed (0-100)
         """
         try:
-            # Import here to avoid circular imports
-            from .controllers import train_status
-
             logger.info(f"Starting speed ramp to {target_speed}")
 
-            # Use the speed ramping from controllers.py but with MQTT publishing
-            current_speed = train_status["speed"]
+            # Get current speed from local state
+            current_speed = self.current_speed
             speed_diff = target_speed - current_speed
 
             if speed_diff == 0:
@@ -349,7 +369,7 @@ class EdgeControllerApp:
             # Ramp through intermediate speeds
             for step in range(1, total_steps + 1):
                 new_speed = current_speed + (step * step_direction)
-                train_status["speed"] = new_speed
+                self.current_speed = new_speed  # Update local state
 
                 # Update hardware controller
                 self.hardware_controller.set_speed(new_speed)
@@ -438,6 +458,7 @@ class EdgeControllerApp:
                 logger.info(
                     f"Executing START command (speed={speed}, direction={'forward' if direction == 1 else 'reverse'})..."
                 )
+                self.current_speed = speed  # Update local state
                 self.hardware_controller.start(speed, direction)
                 logger.info(
                     f"✓ Motor started at speed {speed} ({'forward' if direction == 1 else 'reverse'})"
@@ -448,6 +469,7 @@ class EdgeControllerApp:
             # Command: stop motor immediately
             elif action == "stop":
                 logger.info("Executing STOP command...")
+                self.current_speed = 0  # Update local state
                 self.hardware_controller.stop()
                 logger.info("✓ Motor stopped")
                 # Publish status update after command execution
@@ -462,6 +484,7 @@ class EdgeControllerApp:
                     logger.info(
                         f"Executing SET_SPEED command with direction change (speed={speed}, direction={'forward' if direction == 1 else 'reverse'})..."
                     )
+                    self.current_speed = speed  # Update local state
                     self.hardware_controller.set_direction(direction)
                     self.hardware_controller.set_speed(speed)
                     logger.info(
@@ -469,6 +492,7 @@ class EdgeControllerApp:
                     )
                 else:
                     logger.info(f"Executing SET_SPEED command (speed={speed})...")
+                    self.current_speed = speed  # Update local state
                     self.hardware_controller.set_speed(speed)
                     logger.info(f"✓ Speed set to {speed}")
                 # Publish status update after command execution
@@ -518,9 +542,9 @@ class EdgeControllerApp:
             # Build status payload from current hardware state
             status = {
                 "train_id": self.train_id,
-                "speed": self.hardware_controller.current_speed,
+                "speed": self.current_speed,
                 "direction": "FORWARD"
-                if self.hardware_controller.current_direction == 1
+                if self.hardware_controller.get_direction() == 1
                 else "BACKWARD",
                 "timestamp": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
             }
@@ -537,7 +561,7 @@ class EdgeControllerApp:
         """Run the main application loop with async support."""
         # Store reference to the main event loop for MQTT callbacks
         self.main_loop = asyncio.get_running_loop()
-        
+
         try:
             logger.info("Edge controller running. Press Ctrl+C to stop.")
             while True:
