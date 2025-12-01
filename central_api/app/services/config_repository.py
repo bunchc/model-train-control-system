@@ -203,6 +203,57 @@ class ConfigRepository:
         finally:
             conn.close()
 
+    def add_train(
+        self,
+        train_id: str,
+        name: str,
+        controller_id: str,
+        description: str = "",
+        model: str = "",
+        plugin_name: str = "dc_motor",
+        plugin_config: str = "{}",
+    ) -> None:
+        """Add a new train to the database.
+
+        Args:
+            train_id: Unique UUID for the train
+            name: Human-readable train name
+            controller_id: UUID of the edge controller managing this train
+            description: Optional description of the train
+            model: Optional model name/number
+            plugin_name: Hardware plugin name (default: dc_motor)
+            plugin_config: JSON string of plugin configuration
+
+        Raises:
+            sqlite3.IntegrityError: If train_id already exists or controller_id invalid
+            sqlite3.Error: For other database errors
+
+        Example:
+            >>> repo.add_train(
+            ...     train_id="abc-123",
+            ...     name="Express Line",
+            ...     controller_id="ctrl-456",
+            ...     plugin_config='{"motor_port": 1}'
+            ... )
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                """
+                INSERT INTO trains
+                (id, name, description, model, plugin_name, plugin_config, edge_controller_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (train_id, name, description, model, plugin_name, plugin_config, controller_id),
+            )
+            conn.commit()
+            logger.info(f"Added train: {name} ({train_id}) to controller {controller_id}")
+        except sqlite3.IntegrityError:
+            logger.exception(f"Failed to add train {train_id}")
+            raise
+        finally:
+            conn.close()
+
     def get_plugin(self, plugin_name: str) -> Optional[dict[str, Any]]:
         """Retrieve plugin by name.
 

@@ -185,6 +185,82 @@ class ConfigManager:
             logger.info(f"Registered controller: {name} -> {controller_uuid}")
             return controller_uuid
 
+    def add_train(
+        self,
+        controller_uuid: str,
+        train_id: str,
+        name: str,
+        description: str = "",
+        model: str = "",
+        plugin_name: str = "dc_motor",
+        plugin_config: dict | None = None,
+    ) -> Train:
+        """Register a new train for a controller.
+
+        Args:
+            controller_uuid: UUID of the edge controller managing this train
+            train_id: Unique UUID for the train
+            name: Human-readable train name
+            description: Optional train description
+            model: Optional model name/number
+            plugin_name: Hardware plugin name (default: dc_motor)
+            plugin_config: Plugin configuration dict
+
+        Returns:
+            Train model object representing the created train
+
+        Raises:
+            ConfigurationError: If controller doesn't exist or train creation fails
+
+        Example:
+            >>> train = manager.add_train(
+            ...     controller_uuid="ctrl-123",
+            ...     train_id="train-456",
+            ...     name="Express Line",
+            ...     plugin_config={"motor_port": 1}
+            ... )
+        """
+        import json
+
+        # Validate controller exists
+        controller = self.repository.get_edge_controller(controller_uuid)
+        if not controller:
+            msg = f"Controller {controller_uuid} not found"
+            raise ConfigurationError(msg)
+
+        # Convert plugin config dict to JSON string
+        if plugin_config is None:
+            plugin_config = {}
+        plugin_config_json = json.dumps(plugin_config)
+
+        # Add train to database
+        try:
+            self.repository.add_train(
+                train_id=train_id,
+                name=name,
+                controller_id=controller_uuid,
+                description=description,
+                model=model,
+                plugin_name=plugin_name,
+                plugin_config=plugin_config_json,
+            )
+        except Exception as add_error:
+            msg = f"Failed to add train {train_id}: {add_error}"
+            raise ConfigurationError(msg) from add_error
+
+        logger.info(f"Registered train: {name} ({train_id}) for controller {controller_uuid}")
+
+        # Return Train model
+        from app.models.schemas import TrainPlugin
+
+        return Train(
+            id=train_id,
+            name=name,
+            description=description,
+            model=model,
+            plugin=TrainPlugin(name=plugin_name, config=plugin_config),
+        )
+
     def get_full_config(self) -> FullConfig:
         """Retrieve complete system configuration.
 

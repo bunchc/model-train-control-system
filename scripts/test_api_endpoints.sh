@@ -13,6 +13,9 @@ set -euo pipefail  # Exit on error, undefined var, or pipe failure
 # Option to rebuild and restart Docker containers (default: yes)
 REBUILD=${1:-yes}
 
+# Option to keep containers running after tests (default: no)
+KEEP_RUNNING=${KEEP_RUNNING:-no}
+
 export API_URL="http://localhost:8000/api"
 export COMPOSE_FILE="infra/docker/docker-compose.yml"
 export LOCAL_DEV=true
@@ -47,6 +50,7 @@ capture_all_logs() {
   docker logs docker-central_api-1 > "${LOG_DIR}/${prefix}_central_api.log" 2>&1 || echo "central_api container not running"
   docker logs docker-gateway-1 > "${LOG_DIR}/${prefix}_gateway.log" 2>&1 || echo "gateway container not running"
   docker logs docker-edge-controller-1 > "${LOG_DIR}/${prefix}_edge_controller.log" 2>&1 || echo "edge-controller container not running"
+  docker logs docker-web-ui-1 > "${LOG_DIR}/${prefix}_web_ui.log" 2>&1 || echo "web-ui container not running"
 }
 
 # Function to display logs on failure
@@ -76,9 +80,21 @@ cleanup() {
   echo "Capturing final logs..."
   capture_all_logs "final"
 
-  if [ "${REBUILD}" = "yes" ]; then
+  if [ "${KEEP_RUNNING}" = "yes" ]; then
+    echo ""
+    echo "======================================"
+    echo "Containers left running for development"
+    echo "======================================"
+    echo "Central API: http://localhost:8000"
+    echo "Web UI: http://localhost:5173"
+    echo "MQTT Broker: mqtt://localhost:1883"
+    echo ""
+    echo "To stop all containers, run:"
+    echo "  docker compose -f ${COMPOSE_FILE} --profile ${COMPOSE_PROFILE} down"
+    echo "======================================"
+  elif [ "${REBUILD}" = "yes" ]; then
     echo "Stopping containers..."
-    docker-compose -f "${COMPOSE_FILE}" down
+    docker compose -f "${COMPOSE_FILE}" --profile local-dev down
   fi
 }
 
@@ -88,18 +104,21 @@ trap cleanup EXIT
 # Stop and remove existing containers if rebuild requested
 if [ "${REBUILD}" = "yes" ]; then
   echo "Stopping and removing existing containers..."
-  docker-compose -f "${COMPOSE_FILE}" down
+  docker compose -f "${COMPOSE_FILE}" --profile loc"${COMPOSE_PROFILE}" down
   echo ""
 fi
 
 # Start services
 echo "Starting services..."
 if [ "${REBUILD}" = "yes" ]; then
-  echo "Building and starting containers..."
-  docker-compose -f "${COMPOSE_FILE}" up --build -d mqtt central_api
+  echo "Building containers..."
+  docker compose -f "${COMPOSE_FILE}" --profile "${COMPOSE_PROFILE}" build --no-cache
+  echo ""
+  echo "Starting containers..."
+  docker compose -f "${COMPOSE_FILE}" --profile "${COMPOSE_PROFILE}" up -d
 else
   echo "Starting containers (no rebuild)..."
-  docker-compose -f "${COMPOSE_FILE}" up -d mqtt central_api
+  docker compose -f "${COMPOSE_FILE}" --profile "${COMPOSE_PROFILE}" up -d
 fi
 
 echo ""
@@ -131,6 +150,30 @@ if [ ${RETRY_COUNT} -eq ${MAX_RETRIES} ]; then
   exit 1
 fi
 
+# Wait for web-ui to be healthy
+echo "Checking web-ui health..."
+WEB_RETRY_COUNT=0
+WEB_MAX_RETRIES=30
+
+while [ ${WEB_RETRY_COUNT} -lt ${WEB_MAX_RETRIES} ]; do
+  # Check if web-ui responds with HTTP 200
+  if curl -s -f http://localhost:5173 > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ Web UI is running${NC}"
+    echo -e "  Access at: http://localhost:5173"
+    break
+  fi
+
+  WEB_RETRY_COUNT=$((WEB_RETRY_COUNT + 1))
+  echo "Waiting for Web UI... (${WEB_RETRY_COUNT}/${WEB_MAX_RETRIES})"
+  sleep 2
+done
+
+if [ ${WEB_RETRY_COUNT} -eq ${WEB_MAX_RETRIES} ]; then
+  echo -e "${RED}ERROR: Web UI failed to start${NC}"
+  docker logs docker-web-ui-1 --tail 50
+  exit 1
+fi
+
 echo ""
 echo "======================================"
 echo "Running API Tests with Inso CLI"
@@ -155,31 +198,6 @@ fi
 echo "======================================"
 
 exit ${TEST_EXIT_CODE}
-  echo ""
-
-  echo "--- MQTT Broker Logs ---"
-  docker logs --tail 50 docker-mqtt-1 2>&1 || echo "mqtt container not available"
-  echo ""
-
-  echo "--- Central API Logs ---"
-  docker logs --tail 50 docker-central_api-1 2>&1 || echo "central_api container not available"
-  echo ""
-
-  echo "--- Gateway Logs ---"
-  docker logs --tail 50 docker-gateway-1 2>&1 || echo "gateway container not available"
-  echo ""
-
-  echo "--- Edge Controller Logs ---"
-  docker logs --tail 50 docker-edge-controller-1 2>&1 || echo "edge-controller container not available"
-  echo ""
-
-  echo "========================================"
-  echo "Full logs saved to: ${LOG_DIR}"
-  echo "========================================"
-
-  # Capture full logs
-  capture_all_logs "failure"
-}
 
 # Trap errors and display logs
 trap 'display_logs_on_failure "unknown"' ERR

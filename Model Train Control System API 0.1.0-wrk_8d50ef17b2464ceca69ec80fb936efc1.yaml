@@ -56,6 +56,59 @@ collection:
             send: true
             store: true
           rebuildPath: true
+      - url: "{{ _.base_url }}/api/trains"
+        name: Register New Train
+        meta:
+          id: req_register_train_001
+          created: 1764598800000
+          modified: 1764598800000
+          isPrivate: false
+          description: >
+            Register a new train in the system. Accepts controller_uuid in body.
+            Edge controllers should prefer POST /api/controllers/{uuid}/trains.
+          sortKey: -1764006498983.5
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "train_id": "9bf2f703-5ba2-5032-a749-01cce962bcf6",
+              "name": "Express Line Engine",
+              "controller_uuid": "58902c61-2b70-42fe-8542-6b5b404aa998",
+              "description": "DC Motor on M1 port",
+              "model": "DC Motor",
+              "plugin": {
+                "name": "dc_motor",
+                "config": {
+                  "motor_port": 1
+                }
+              }
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+            disabled: false
+        scripts:
+          afterResponse: |+
+
+            insomnia.test('Status is 201', () => {
+                insomnia.expect(insomnia.response.code).to.eql(201);
+            });
+
+            insomnia.test('Response has train object', () => {
+                const body = insomnia.response.json();
+                insomnia.expect(body).to.have.property('id');
+                insomnia.expect(body).to.have.property('name');
+                insomnia.expect(body).to.have.property('plugin');
+            });
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
       - url: "{{ _.base_url }}/api/trains/{{ _.train_id }}/command"
         name: Send Command to Train
         meta:
@@ -217,6 +270,58 @@ collection:
                     insomnia.expect(train).to.have.property('plugin');
                 });
             }
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: "{{ _.base_url }}/api/controllers/{{ _.controller_uuid }}/trains"
+        name: Register Train for Controller
+        meta:
+          id: req_register_train_for_controller_001
+          created: 1764598900000
+          modified: 1764598900000
+          isPrivate: false
+          description: >
+            Register a new train managed by a specific edge controller.
+            Preferred endpoint for edge controllers to self-register trains.
+          sortKey: -1764006498986.5
+        method: POST
+        body:
+          mimeType: application/json
+          text: |-
+            {
+              "train_id": "7cd3e891-4ab3-6143-b850-12ddf073ce87",
+              "name": "Freight Line Engine",
+              "description": "DC Motor on M3 port",
+              "model": "DC Motor",
+              "plugin": {
+                "name": "dc_motor",
+                "config": {
+                  "motor_port": 3
+                }
+              }
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+            disabled: false
+        scripts:
+          afterResponse: |+
+
+            insomnia.test('Status is 201', () => {
+                insomnia.expect(insomnia.response.code).to.eql(201);
+            });
+
+            insomnia.test('Response has train object', () => {
+                const body = insomnia.response.json();
+                insomnia.expect(body).to.have.property('id');
+                insomnia.expect(body).to.have.property('name');
+                insomnia.expect(body).to.have.property('plugin');
+            });
         settings:
           renderRequestBody: true
           encodeUrl: true

@@ -143,8 +143,13 @@ class EdgeControllerApp:
 
         # Initialize configuration
         try:
-            # Locate config files relative to this script
-            config_path = Path(__file__).parent / "edge-controller.conf"
+            # Check for config file in mounted location first, then fall back to app directory
+            mounted_config = Path("/app/edge-controller.conf")
+            if mounted_config.exists():
+                config_path = mounted_config
+            else:
+                config_path = Path(__file__).parent / "edge-controller.conf"
+
             cached_config_path = Path(__file__).parent / "edge-controller.yaml"
 
             logger.info(f"Loading service config from: {config_path}")
@@ -197,8 +202,12 @@ class EdgeControllerApp:
             try:
                 from .dc_motor_hat import DCMotorHatController
 
-                self.hardware_controller = DCMotorHatController()
-                logger.info("✓ Hardware controller initialized (real hardware)")
+                # Get motor port from environment (default to 1 for M1)
+                motor_port = int(os.getenv("MOTOR_PORT", "1"))
+                logger.info(f"Motor port configured: M{motor_port}")
+
+                self.hardware_controller = DCMotorHatController(motor_num=motor_port)
+                logger.info(f"✓ Hardware controller initialized (DC Motor M{motor_port})")
             except Exception:
                 logger.exception("✗ Failed to initialize hardware controller")
                 return False
@@ -285,16 +294,16 @@ class EdgeControllerApp:
         method calls. It implements the command routing logic and error handling.
 
         Supported Commands:
-            - {'action': 'start', 'speed': 50, 'direction': 1}: Start motor at specified speed and direction
+            - {'action': 'start', 'speed': 50, 'direction': 'FORWARD'}: Start motor at specified speed and direction
             - {'action': 'stop'}: Stop motor immediately
-            - {'action': 'setSpeed', 'speed': 75}: Change motor speed (maintains current direction)
-            - {'action': 'setDirection', 'direction': 0}: Change motor direction (1=forward, 0=reverse)
+            - {'action': 'setSpeed', 'speed': 75, 'direction': 'BACKWARD'}: Change motor speed and direction
+            - {'action': 'setDirection', 'direction': 'FORWARD'}: Change motor direction
 
         Args:
             command: Command dictionary containing:
                 - action (str): Required. Command type (start|stop|setSpeed|setDirection)
                 - speed (int): Optional. Motor speed 0-100 (default: 50)
-                - direction (int): Optional. Motor direction 1=forward, 0=reverse (default: 1)
+                - direction (str|int): Optional. Motor direction "FORWARD"/"BACKWARD" or 1/0 (default: "FORWARD")
 
         Error Handling:
             - Unknown actions are logged as warnings and ignored
@@ -306,7 +315,9 @@ class EdgeControllerApp:
             - Logs all command executions and errors
 
         Example:
-            >>> self._execute_hardware_command({"action": "start", "speed": 60})
+            >>> self._execute_hardware_command(
+            ...     {"action": "start", "speed": 60, "direction": "BACKWARD"}
+            ... )
             # Logs: "Started motor at speed 60"
 
         Note:
@@ -316,13 +327,32 @@ class EdgeControllerApp:
         # Extract action from command payload
         action = command.get("action")
 
+        # Handle speed-only commands (backwards compatibility)
+        if action is None and "speed" in command:
+            action = "setSpeed"
+
+        # Helper function to normalize direction parameter
+        def normalize_direction(direction_param: Any) -> int:
+            """Convert direction parameter to integer (1=forward, 0=reverse).
+
+            Accepts:
+                - String: "FORWARD" or "BACKWARD"
+                - Integer: 1 (forward) or 0 (reverse)
+                - None: defaults to 1 (forward)
+            """
+            if direction_param is None:
+                return 1  # Default to forward
+            if isinstance(direction_param, str):
+                return 1 if direction_param.upper() == "FORWARD" else 0
+            return int(direction_param)  # Pass through integers
+
         # Execute hardware action with exception isolation
         # Each exception is caught to prevent MQTT callback failures
         try:
             # Command: start motor at specified speed and direction
             if action == "start":
                 speed = command.get("speed", 50)  # Default to 50% if not specified
-                direction = command.get("direction", 1)  # Default to forward if not specified
+                direction = normalize_direction(command.get("direction"))
                 logger.info(
                     f"Executing START command (speed={speed}, direction={'forward' if direction == 1 else 'reverse'})..."
                 )
@@ -340,13 +370,25 @@ class EdgeControllerApp:
             # Command: change speed without stopping
             elif action == "setSpeed":
                 speed = command.get("speed", 50)  # Default to 50% if not specified
-                logger.info(f"Executing SET_SPEED command (speed={speed})...")
-                self.hardware_controller.set_speed(speed)
-                logger.info(f"✓ Speed set to {speed}")
+                # If direction is provided with setSpeed, change direction first
+                if "direction" in command:
+                    direction = normalize_direction(command.get("direction"))
+                    logger.info(
+                        f"Executing SET_SPEED command with direction change (speed={speed}, direction={'forward' if direction == 1 else 'reverse'})..."
+                    )
+                    self.hardware_controller.set_direction(direction)
+                    self.hardware_controller.set_speed(speed)
+                    logger.info(
+                        f"✓ Speed set to {speed} ({'forward' if direction == 1 else 'reverse'})"
+                    )
+                else:
+                    logger.info(f"Executing SET_SPEED command (speed={speed})...")
+                    self.hardware_controller.set_speed(speed)
+                    logger.info(f"✓ Speed set to {speed}")
 
             # Command: change direction
             elif action == "setDirection":
-                direction = command.get("direction", 1)  # Default to forward if not specified
+                direction = normalize_direction(command.get("direction"))
                 logger.info(
                     f"Executing SET_DIRECTION command (direction={'forward' if direction == 1 else 'reverse'})..."
                 )

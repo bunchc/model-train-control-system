@@ -41,30 +41,37 @@ The Web UI is a modern single-page application (SPA) built with React 18 and Typ
 ## Core Technologies
 
 ### Frontend Framework
+
 - **React 18.3** - Component-based UI with concurrent features
 - **TypeScript 5.4** - Static typing for better DX and fewer bugs
 - **Vite 5.1** - Fast build tool with HMR
 
 ### State Management
+
 - **TanStack Query 5.28** - Server state management with automatic caching, polling, and refetching
 - **React Context** - Client state (theme, UI preferences)
 
 ### Routing
+
 - **React Router 6.22** - Declarative routing with nested routes
 
 ### Styling
+
 - **TailwindCSS 3.4** - Utility-first CSS framework
 - **Headless UI 1.7** - Unstyled, accessible UI components
 - **Heroicons 2.1** - Beautiful SVG icons
 
 ### Data Fetching
+
 - **Axios 1.6** - HTTP client with interceptors for logging and error handling
 
 ### Form Management
+
 - **React Hook Form 7.51** - Performant form handling
 - **Zod 3.22** - Runtime type validation
 
 ### UI Enhancements
+
 - **Recharts 2.12** - Composable charting library
 - **React Hot Toast 2.4** - Lightweight notifications
 - **date-fns 3.3** - Modern date utility library
@@ -144,19 +151,19 @@ src/
 // User clicks button in component
 const { mutate: sendCommand } = useSendCommand();
 
-sendCommand({ 
-  trainId: 'train-001', 
-  command: { action: 'setSpeed', speed: 50 } 
+sendCommand({
+  trainId: 'train-001',
+  command: { action: 'setSpeed', speed: 50 }
 });
 
 // Hook (queries.ts)
 export const useSendCommand = () => {
   return useMutation({
-    mutationFn: ({ trainId, command }) => 
+    mutationFn: ({ trainId, command }) =>
       sendTrainCommand(trainId, command),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ 
-        queryKey: ['trains', variables.trainId, 'status'] 
+      queryClient.invalidateQueries({
+        queryKey: ['trains', variables.trainId, 'status']
       });
     },
   });
@@ -164,11 +171,11 @@ export const useSendCommand = () => {
 
 // API endpoint (endpoints/trains.ts)
 export const sendTrainCommand = async (
-  trainId: string, 
+  trainId: string,
   command: TrainCommand
 ) => {
   const response = await apiClient.post(
-    `/api/trains/${trainId}/command`, 
+    `/api/trains/${trainId}/command`,
     command
   );
   return response.data;
@@ -195,6 +202,7 @@ const { data: status, isLoading, error } = useTrainStatus(trainId);
 ## State Management Strategy
 
 ### Server State (React Query)
+
 - **Trains list** - Cached, auto-refresh every 5s
 - **Train status** - Cached per train, auto-refresh every 2s
 - **Controllers** - Cached, auto-refresh every 10s
@@ -202,6 +210,7 @@ const { data: status, isLoading, error } = useTrainStatus(trainId);
 - **Configuration** - Cached, manual refresh
 
 ### Client State (React Context/useState)
+
 - **Theme preference** - Persisted to localStorage
 - **UI state** - Modal open/closed, form state, etc.
 
@@ -267,11 +276,11 @@ onError: (err, newData, context) => {
 const useTrainControl = (trainId: string) => {
   const { data: status } = useTrainStatus(trainId);
   const { mutate: sendCommand } = useSendCommand();
-  
+
   const setSpeed = (speed: number) => {
     sendCommand({ trainId, command: { action: 'setSpeed', speed } });
   };
-  
+
   return { status, setSpeed };
 };
 ```
@@ -303,7 +312,7 @@ apiClient.interceptors.response.use(
 defaultOptions: {
   queries: {
     retry: 2,
-    retryDelay: (attemptIndex) => 
+    retryDelay: (attemptIndex) =>
       Math.min(1000 * 2 ** attemptIndex, 30000),
   },
 }
@@ -342,7 +351,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const MemoizedComponent = React.memo(ExpensiveComponent);
 
 // Memoize expensive computations
-const sortedTrains = useMemo(() => 
+const sortedTrains = useMemo(() =>
   trains.sort((a, b) => a.name.localeCompare(b.name)),
   [trains]
 );
@@ -376,14 +385,14 @@ queryClient.prefetchQuery({
 ### ARIA Attributes
 
 ```tsx
-<button 
+<button
   aria-label="Emergency stop train"
   aria-pressed={isActive}
 >
   Stop
 </button>
 
-<input 
+<input
   aria-invalid={hasError}
   aria-describedby="error-message"
 />
@@ -410,18 +419,21 @@ onKeyDown={(e) => {
 ## Testing Strategy
 
 ### Unit Tests
+
 - Component rendering
 - User interactions
 - Custom hooks
 - Utility functions
 
 ### Integration Tests
+
 - API client
 - Query hooks
 - Form submissions
 - Navigation
 
 ### E2E Tests (Future)
+
 - Complete user workflows
 - Multi-page scenarios
 - Error recovery
@@ -462,6 +474,7 @@ VITE_API_BASE_URL=http://localhost:8000
 ### Static Hosting
 
 Built for deployment to:
+
 - Nginx/Apache
 - S3 + CloudFront
 - Netlify/Vercel
@@ -470,6 +483,7 @@ Built for deployment to:
 ## Future Enhancements
 
 ### Planned Features
+
 - [ ] WebSocket integration for real-time push updates
 - [ ] Historical telemetry charts
 - [ ] Multi-train orchestration
@@ -479,6 +493,7 @@ Built for deployment to:
 - [ ] PWA with offline support
 
 ### Technical Improvements
+
 - [ ] Cypress E2E tests
 - [ ] Storybook component documentation
 - [ ] Bundle size optimization

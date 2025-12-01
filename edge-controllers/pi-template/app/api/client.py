@@ -298,6 +298,106 @@ class CentralAPIClient:
         except (KeyError, ValueError) as exc:
             raise APIRegistrationError(f"Invalid registration response: {exc}") from exc
 
+    def register_train(self, controller_uuid: str, train_data: dict[str, Any]) -> bool:
+        """Register a train with the central API.
+
+        Calls POST /api/controllers/{controller_uuid}/trains to register a new train
+        for this controller. The train data should contain:
+        - train_id: Unique train identifier
+        - name: Human-readable train name
+        - plugin: Dict with 'name' and 'config' keys
+        - description: Optional train description
+        - model: Optional train model
+
+        Expected Request:
+            {
+                "train_id": "7cd3e891-fb64-46ff-a3f4-36e4aff6bee0",
+                "name": "Train M1",
+                "plugin": {
+                    "name": "adafruit_dcmotor_hat",
+                    "config": {"motor_port": 1}
+                },
+                "description": "Train on motor port M1",
+                "model": "DC Motor"
+            }
+
+        Expected Response (201 Created):
+            {
+                "id": "7cd3e891-fb64-46ff-a3f4-36e4aff6bee0",
+                "name": "Train M1",
+                "plugin": {"name": "adafruit_dcmotor_hat", "config": {"motor_port": 1}},
+                "edge_controller_id": "{controller_uuid}",
+                ...
+            }
+
+        Args:
+            controller_uuid: UUID of the controller owning this train
+            train_data: Dictionary containing train configuration
+
+        Returns:
+            True if registration successful, False otherwise
+
+        Raises:
+            APIRegistrationError: If registration fails:
+                - Network error (API unreachable)
+                - API returned error status (400, 409, 500)
+                - Invalid JSON in response
+
+        Example:
+            >>> train_config = {
+            ...     "train_id": "train-123",
+            ...     "name": "Express Train",
+            ...     "plugin": {"name": "adafruit_dcmotor_hat", "config": {"motor_port": 1}},
+            ... }
+            >>> try:
+            ...     success = client.register_train(controller_uuid, train_config)
+            ...     if success:
+            ...         logger.info("Train registered successfully")
+            ... except APIRegistrationError as e:
+            ...     logger.error(f"Train registration failed: {e}")
+        """
+        try:
+            url = f"{self.base_url}/api/controllers/{controller_uuid}/trains"
+
+            response = requests.post(url, json=train_data, timeout=self.timeout)
+
+            # Handle expected status codes
+            if response.status_code == 201:
+                data = response.json()
+                train_id = data.get("id", train_data.get("id", "unknown"))
+                logger.info(
+                    f"Registered train: id={train_id}, name={train_data.get('name', 'unknown')}"
+                )
+                return True
+
+            elif response.status_code == 409:
+                # Train already exists - this is acceptable
+                logger.warning(
+                    f"Train {train_data.get('id', 'unknown')} already registered (409 Conflict)"
+                )
+                return True
+
+            elif response.status_code == 400:
+                # Bad request - controller not found or invalid data
+                error_detail = "unknown"
+                try:
+                    error_data = response.json()
+                    error_detail = error_data.get("detail", error_detail)
+                except Exception:
+                    pass
+                raise APIRegistrationError(f"Train registration failed (400): {error_detail}")
+
+            else:
+                # Other error status codes
+                raise APIRegistrationError(
+                    f"Train registration failed with status {response.status_code}"
+                )
+
+        except RequestException as exc:
+            raise APIRegistrationError(f"Train registration request failed: {exc}") from exc
+        except (KeyError, ValueError) as exc:
+            raise APIRegistrationError(f"Invalid train registration response: {exc}") from exc
+
     def download_runtime_config(self, controller_uuid: str) -> Optional[dict[str, Any]]:
         """Download runtime configuration for a controller.
 
