@@ -129,6 +129,7 @@ class EdgeControllerApp:
         self.hardware_controller: Optional[Any] = None
         self.train_id: Optional[str] = None
         self.speed_task: Optional[asyncio.Task] = None  # Track speed ramping task
+        self.main_loop: Optional[asyncio.AbstractEventLoop] = None  # Store main event loop
 
     def initialize(self) -> bool:  # noqa: PLR0915
         """Initialize edge controller components.
@@ -295,12 +296,15 @@ class EdgeControllerApp:
                     self.speed_task.cancel()
                 # Schedule async task for speed ramping
                 try:
-                    # Get the running event loop and schedule the coroutine
-                    loop = asyncio.get_event_loop()
-                    future = asyncio.run_coroutine_threadsafe(
-                        self._handle_speed_command(speed), loop
-                    )
-                    self.speed_task = future
+                    # Use the stored main event loop reference
+                    if self.main_loop:
+                        future = asyncio.run_coroutine_threadsafe(
+                            self._handle_speed_command(speed), self.main_loop
+                        )
+                        self.speed_task = future
+                    else:
+                        logger.warning("Main event loop not available, using synchronous execution")
+                        self._execute_hardware_command(command)
                 except RuntimeError:
                     logger.exception("Failed to schedule speed ramping")
                     # Fall back to synchronous execution
@@ -531,6 +535,9 @@ class EdgeControllerApp:
 
     async def run_async(self) -> None:
         """Run the main application loop with async support."""
+        # Store reference to the main event loop for MQTT callbacks
+        self.main_loop = asyncio.get_running_loop()
+        
         try:
             logger.info("Edge controller running. Press Ctrl+C to stop.")
             while True:
