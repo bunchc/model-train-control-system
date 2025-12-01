@@ -405,7 +405,7 @@ class EdgeControllerApp:
             # Publish current status even if there was an error
             self._publish_current_status()
 
-    def _execute_hardware_command(self, command: dict[str, Any]) -> None:
+    def _execute_hardware_command(self, command: dict[str, Any]) -> None:  # noqa: PLR0915
         """Execute command on hardware controller.
 
         This method translates MQTT command payloads into hardware controller
@@ -414,12 +414,13 @@ class EdgeControllerApp:
         Supported Commands:
             - {'action': 'start', 'speed': 50, 'direction': 'FORWARD'}: Start motor at specified speed and direction
             - {'action': 'stop'}: Stop motor immediately
-            - {'action': 'setSpeed', 'speed': 75, 'direction': 'BACKWARD'}: Change motor speed and direction
+            - {'action': 'emergencyStop'}: Emergency stop with warning logging
+            - {'action': 'setSpeed', 'speed': 75, 'direction': 'BACKWARD'}: Change motor speed and direction (gradual ramping)
             - {'action': 'setDirection', 'direction': 'FORWARD'}: Change motor direction
 
         Args:
             command: Command dictionary containing:
-                - action (str): Required. Command type (start|stop|setSpeed|setDirection)
+                - action (str): Required. Command type (start|stop|emergencyStop|setSpeed|setDirection)
                 - speed (int): Optional. Motor speed 0-100 (default: 50)
                 - direction (str|int): Optional. Motor direction "FORWARD"/"BACKWARD" or 1/0 (default: "FORWARD")
 
@@ -482,12 +483,21 @@ class EdgeControllerApp:
                 # Publish status update after command execution
                 self._publish_current_status()
 
-            # Command: stop motor immediately
+            # Command: stop motor (regular stop)
             elif action == "stop":
                 logger.info("Executing STOP command...")
                 self.current_speed = 0  # Update local state
                 self.hardware_controller.stop()
                 logger.info("✓ Motor stopped")
+                # Publish status update after command execution
+                self._publish_current_status()
+
+            # Command: emergency stop - immediate power cut
+            elif action == "emergencyStop":
+                logger.warning("Executing EMERGENCY STOP command...")
+                self.current_speed = 0  # Update local state
+                self.hardware_controller.stop()  # Immediate stop, no ramping
+                logger.warning("⚠️ EMERGENCY STOP: Motor stopped immediately")
                 # Publish status update after command execution
                 self._publish_current_status()
 

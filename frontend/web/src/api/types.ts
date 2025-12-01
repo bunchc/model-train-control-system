@@ -33,14 +33,12 @@ export interface Train {
 export interface TrainStatus {
   train_id: string;
   speed: number;
-  voltage: number;
-  current: number;
-  position: string;
+  direction: 'FORWARD' | 'BACKWARD';
   timestamp?: string;
 }
 
 export interface TrainCommand {
-  action: 'setSpeed' | 'start' | 'stop' | 'forward' | 'reverse';
+  action: 'setSpeed' | 'start' | 'stop' | 'forward' | 'reverse' | 'emergencyStop';
   speed?: number | null;
   direction?: 'forward' | 'reverse' | null;
 }

@@ -41,21 +41,15 @@ export const TrainCard: React.FC<TrainCardProps> = ({ train }) => {
             {/* Telemetry */}
             <div className="ml-4 flex-1 space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600 dark:text-gray-400">Voltage:</span>
+                <span className="text-gray-600 dark:text-gray-400">Speed:</span>
                 <span className="font-medium text-gray-900 dark:text-gray-100">
-                  {status?.voltage.toFixed(2) ?? '--'}V
+                  {status?.speed ?? '--'}%
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600 dark:text-gray-400">Current:</span>
+                <span className="text-gray-600 dark:text-gray-400">Direction:</span>
                 <span className="font-medium text-gray-900 dark:text-gray-100">
-                  {status?.current.toFixed(3) ?? '--'}A
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600 dark:text-gray-400">Position:</span>
-                <span className="font-medium text-gray-900 dark:text-gray-100">
-                  {status?.position ?? '--'}
+                  {status?.direction ?? '--'}
                 </span>
               </div>
             </div>
