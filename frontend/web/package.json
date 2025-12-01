@@ -1,25 +1,45 @@
 {
-  "name": "model-train-control-system-frontend",
+  "name": "model-train-control-web",
   "version": "1.0.0",
-  "description": "Frontend application for controlling model trains.",
-  "main": "src/App.tsx",
+  "type": "module",
+  "description": "Web UI for Model Train Control System",
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
-    "react": "^17.0.2",
-    "react-dom": "^17.0.2",
-    "react-scripts": "4.0.3",
-    "mqtt": "^5.14.1"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.22.0",
+    "@tanstack/react-query": "^5.28.0",
+    "axios": "^1.6.7",
+    "zod": "^3.22.4",
+    "react-hook-form": "^7.51.0",
+    "@headlessui/react": "^1.7.18",
+    "@heroicons/react": "^2.1.1",
+    "clsx": "^2.1.0",
+    "recharts": "^2.12.0",
+    "date-fns": "^3.3.1",
+    "react-hot-toast": "^2.4.1"
   },
   "devDependencies": {
-    "typescript": "^4.9.5",
-    "@types/react": "^19.2.6",
-    "@types/react-dom": "^19.2.3"
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.4.2",
+    "vite": "^5.1.6",
+    "tailwindcss": "^3.4.1",
+    "autoprefixer": "^10.4.18",
+    "postcss": "^8.4.35",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^7.2.0",
+    "@typescript-eslint/parser": "^7.2.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "prettier": "^3.2.5"
   },
-  "homepage": ".",
   "license": "MIT"
 }

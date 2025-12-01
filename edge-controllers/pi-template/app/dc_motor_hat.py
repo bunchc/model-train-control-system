@@ -10,10 +10,11 @@ Hardware Specifications:
     - DC Motor Channels: M1, M2, M3, M4 (four independent DC motor outputs)
     - Power: External 5-12V supply (separate from Pi)
 
-PCA9685 Channel Mapping for Motor 2 (M2):
-    - PWM Channel 13: Speed control (0-4095, where 4095 = 100% duty cycle)
-    - PWM Channel 12: Direction input 2 (IN2)
-    - PWM Channel 11: Direction input 1 (IN1)
+PCA9685 Channel Mapping (per motor):
+    Motor 1 (M1): PWM=8,  IN2=9,  IN1=10
+    Motor 2 (M2): PWM=13, IN2=12, IN1=11
+    Motor 3 (M3): PWM=2,  IN2=3,  IN1=4
+    Motor 4 (M4): PWM=7,  IN2=6,  IN1=5
 
 Direction Control Logic (via PWM channels):
     - Forward:  IN1=4096 (HIGH), IN2=0 (LOW)
@@ -39,6 +40,8 @@ Typical usage:
 
 import logging
 import time
+from functools import wraps
+from typing import Callable, ClassVar, Optional, TypeVar
 
 
 try:
@@ -54,6 +57,67 @@ except ImportError:
 
 
 logger = logging.getLogger(__name__)
+
+# Type variable for retry decorator
+T = TypeVar("T")
+
+
+def retry_i2c_operation(
+    max_retries: int = 3,
+    initial_delay: float = 0.01,
+    backoff_factor: float = 2.0,
+    max_delay: float = 0.5,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """Decorator to retry I2C operations with exponential backoff.
+
+    I2C operations can fail intermittently due to:
+    - Bus contention (multiple devices)
+    - Clock stretching issues
+    - Electrical noise
+    - Timing issues
+
+    Args:
+        max_retries: Maximum number of retry attempts (default: 3)
+        initial_delay: Initial delay in seconds before first retry (default: 0.01)
+        backoff_factor: Multiplier for delay between retries (default: 2.0)
+        max_delay: Maximum delay between retries in seconds (default: 0.5)
+
+    Returns:
+        Decorated function with retry logic
+
+    Example:
+        @retry_i2c_operation(max_retries=3)
+        def write_data(self, register, value):
+            self.bus.write_byte_data(self.address, register, value)
+    """
+
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> T:
+            delay = initial_delay
+            last_exception = None
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except OSError as e:
+                    last_exception = e
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"I2C operation failed (attempt {attempt + 1}/{max_retries + 1}): {e}. "
+                            f"Retrying in {delay:.3f}s..."
+                        )
+                        time.sleep(delay)
+                        delay = min(delay * backoff_factor, max_delay)
+                    else:
+                        logger.exception(f"I2C operation failed after {max_retries + 1} attempts")
+
+            # If we get here, all retries failed
+            raise last_exception
+
+        return wrapper
+
+    return decorator
 
 
 # PCA9685 Register addresses
@@ -150,6 +214,7 @@ class PCA9685:
         time.sleep(0.005)
         self.bus.write_byte_data(self.i2c_address, _MODE1, old_mode | _RESTART)
 
+    @retry_i2c_operation(max_retries=3, initial_delay=0.01)
     def set_pwm(self, channel: int, on: int, off: int) -> None:
         """Set PWM value for a specific channel.
 
@@ -163,6 +228,7 @@ class PCA9685:
         self.bus.write_byte_data(self.i2c_address, _LED0_OFF_L + 4 * channel, off & 0xFF)
         self.bus.write_byte_data(self.i2c_address, _LED0_OFF_H + 4 * channel, off >> 8)
 
+    @retry_i2c_operation(max_retries=3, initial_delay=0.01)
     def set_all_pwm(self, on: int, off: int) -> None:
         """Set PWM value for all channels.
 
@@ -197,72 +263,68 @@ class PCA9685:
 
 
 class DCMotorHatController:
-    """Controls DC Motor 2 (M2) on Waveshare Stepper Motor HAT via I2C.
+    """Controls DC Motors (M1-M4) on Waveshare Stepper Motor HAT via I2C.
 
-    PCA9685 PWM Channel Mapping for Motor 2:
-        - Channel 13: Speed control (PWM)
-        - Channel 12: Direction control (IN2)
-        - Channel 11: Direction control (IN1)
-
-    This is a Singleton to prevent multiple I2C initializations.
+    PCA9685 PWM Channel Mapping:
+        Motor 1 (M1): PWM=8,  IN2=9,  IN1=10
+        Motor 2 (M2): PWM=13, IN2=12, IN1=11
+        Motor 3 (M3): PWM=2,  IN2=3,  IN1=4
+        Motor 4 (M4): PWM=7,  IN2=6,  IN1=5
 
     Attributes:
-        pwm: PCA9685 controller instance
-        pwm_pin: PWM channel for speed (13)
-        in1_pin: PWM channel for direction 1 (11)
-        in2_pin: PWM channel for direction 2 (12)
+        pwm: PCA9685 controller instance (shared across all motors)
+        motor_num: Motor number (1-4)
+        pwm_pin: PWM channel for speed control
+        in1_pin: PWM channel for direction control 1
+        in2_pin: PWM channel for direction control 2
         current_speed: Current motor speed (0-100)
         current_direction: Current motor direction (1=forward, 0=reverse)
 
     Example:
-        >>> controller = DCMotorHatController()
-        >>> controller.set_speed(75)  # 75% speed forward
-        >>> controller.set_direction(0)  # Change to reverse
-        >>> controller.stop()  # Stop motor
+        >>> motor1 = DCMotorHatController(motor_num=1)  # Control M1
+        >>> motor3 = DCMotorHatController(motor_num=3)  # Control M3
+        >>> motor1.set_speed(75)
+        >>> motor3.set_speed(50)
     """
 
-    _instance: "DCMotorHatController" = None
+    # Shared PCA9685 instance across all motors (class variable)
+    _shared_pwm: ClassVar[Optional[PCA9685]] = None
 
-    def __new__(cls) -> "DCMotorHatController":
-        """Singleton pattern implementation.
+    # Motor channel mapping: motor_num -> (pwm_pin, in2_pin, in1_pin)
+    _MOTOR_CHANNELS: ClassVar[dict[int, tuple[int, int, int]]] = {
+        1: (8, 9, 10),  # M1
+        2: (13, 12, 11),  # M2
+        3: (2, 3, 4),  # M3
+        4: (7, 6, 5),  # M4
+    }
 
-        Ensures only one instance of this controller exists per process.
-        Subsequent calls to DCMotorHatController() return the same instance.
-
-        Returns:
-            Singleton instance of DCMotorHatController
-        """
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
-
-    def __init__(self, i2c_address: int = 0x6F) -> None:
-        """Initialize DC motor controller (singleton pattern).
-
-        Sets up I2C communication with PCA9685 for Motor 2 (M2) control.
-        Only runs once due to singleton pattern - subsequent calls are no-ops.
+    def __init__(self, motor_num: int = 1, i2c_address: int = 0x6F) -> None:
+        """Initialize DC motor controller for specified motor.
 
         Args:
+            motor_num: Motor number (1-4) corresponding to M1-M4 on the HAT
             i2c_address: I2C address of the PCA9685 (default 0x6F)
+
+        Raises:
+            ValueError: If motor_num is not in range 1-4
 
         Initial State:
             - Motor stopped (PWM = 0)
             - Direction = forward
-            - _initialized flag set to True
         """
-        # Check if already initialized (singleton pattern)
-        if getattr(self, "_initialized", False):
-            return  # Already initialized, skip I2C setup
+        if motor_num not in self._MOTOR_CHANNELS:
+            raise ValueError(f"motor_num must be 1-4, got {motor_num}")
 
-        # Initialize PCA9685 PWM controller
-        self.pwm = PCA9685(i2c_address=i2c_address)
+        # Initialize shared PCA9685 controller (only once)
+        if DCMotorHatController._shared_pwm is None:
+            DCMotorHatController._shared_pwm = PCA9685(i2c_address=i2c_address)
+            logger.info(f"PCA9685 PWM controller initialized (I2C addr 0x{i2c_address:02X})")
 
-        # Motor 2 uses PWM channels 11, 12, 13
-        # Based on Raspi_MotorHAT.py: motor num=1 (second motor, 0-indexed)
-        self.pwm_pin = 13  # Speed control
-        self.in2_pin = 12  # Direction control 2
-        self.in1_pin = 11  # Direction control 1
+        self.pwm = DCMotorHatController._shared_pwm
+        self.motor_num = motor_num
+
+        # Get motor-specific PWM channels
+        self.pwm_pin, self.in2_pin, self.in1_pin = self._MOTOR_CHANNELS[motor_num]
 
         # Initialize state
         self.current_speed: int = 0
@@ -272,9 +334,10 @@ class DCMotorHatController:
         self._set_forward()
         self.pwm.set_pwm(self.pwm_pin, 0, 0)
 
-        # Mark as initialized to prevent repeated I2C setup
-        self._initialized = True
-        logger.info(f"DC Motor HAT controller initialized (Motor 2, I2C addr 0x{i2c_address:02X})")
+        logger.info(
+            f"DC Motor M{motor_num} initialized (PWM={self.pwm_pin}, "
+            f"IN1={self.in1_pin}, IN2={self.in2_pin})"
+        )
 
     def _set_forward(self) -> None:
         """Set motor direction to forward.
