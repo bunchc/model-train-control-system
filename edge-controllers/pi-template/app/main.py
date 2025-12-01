@@ -21,7 +21,6 @@ import asyncio
 import logging
 import os
 import sys
-import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -294,8 +293,18 @@ class EdgeControllerApp:
                 # Cancel any existing speed ramp
                 if self.speed_task and not self.speed_task.done():
                     self.speed_task.cancel()
-                # Create async task for speed ramping
-                self.speed_task = asyncio.create_task(self._handle_speed_command(speed))
+                # Schedule async task for speed ramping
+                try:
+                    # Get the running event loop and schedule the coroutine
+                    loop = asyncio.get_event_loop()
+                    future = asyncio.run_coroutine_threadsafe(
+                        self._handle_speed_command(speed), loop
+                    )
+                    self.speed_task = future
+                except RuntimeError:
+                    logger.exception("Failed to schedule speed ramping")
+                    # Fall back to synchronous execution
+                    self._execute_hardware_command(command)
                 return
 
         # Execute other commands on hardware
@@ -520,16 +529,21 @@ class EdgeControllerApp:
             # Log error but don't fail - status publishing is best-effort
             logger.exception("Failed to publish status update")
 
-    def run(self) -> None:
-        """Run the main application loop."""
+    async def run_async(self) -> None:
+        """Run the main application loop with async support."""
         try:
             logger.info("Edge controller running. Press Ctrl+C to stop.")
             while True:
-                time.sleep(1)
+                await asyncio.sleep(1)
         except KeyboardInterrupt:
             logger.info("Shutting down due to keyboard interrupt")
         finally:
             self.shutdown()
+
+    def run(self) -> None:
+        """Run the main application loop."""
+        # Run the async event loop
+        asyncio.run(self.run_async())
 
     def shutdown(self) -> None:
         """Cleanup and shutdown application."""
