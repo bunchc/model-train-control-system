@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 # Application state
 config_manager: Optional[ConfigManager] = None
+mqtt_status_service = None
 
 
 @asynccontextmanager
@@ -88,6 +89,14 @@ async def lifespan(_app: FastAPI):
         app.state.config_manager = config_manager
         logger.info("Configuration manager initialized successfully")
 
+        # Initialize and start MQTT status service
+        from app.services.mqtt_status_service import MQTTStatusService
+
+        global mqtt_status_service
+        mqtt_status_service = MQTTStatusService(config_manager)
+        mqtt_status_service.start()
+        logger.info("MQTT status service started")
+
     except ConfigurationError as startup_error:
         logger.exception("Startup failed")
         msg = f"Cannot start API: {startup_error}"
@@ -95,8 +104,11 @@ async def lifespan(_app: FastAPI):
 
     yield
 
-    # Shutdown: Cleanup (if needed in future)
+    # Shutdown: Cleanup MQTT service and config manager
     logger.info("Shutting down Central API")
+    if mqtt_status_service:
+        mqtt_status_service.stop()
+        logger.info("MQTT status service stopped")
 
 
 app = FastAPI(title="Model Train Control System API", version="0.1.0", lifespan=lifespan)
@@ -112,7 +124,7 @@ app.add_middleware(
 
 # Include routers with proper prefix
 app.include_router(config.router, prefix="/api")
-app.include_router(trains.router, prefix="/api/trains")
+app.include_router(trains.router, prefix="/api", tags=["trains"])
 
 
 @app.get("/")

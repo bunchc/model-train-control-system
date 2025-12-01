@@ -152,6 +152,89 @@ class ConfigRepository:
         finally:
             conn.close()
 
+    def update_train_controller(self, train_id: str, new_controller_id: str) -> bool:
+        """Update the controller assignment for a train.
+
+        Args:
+            train_id: UUID of train to reassign
+            new_controller_id: UUID of new controller
+
+        Returns:
+            True if update successful
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                "UPDATE trains SET edge_controller_id = ? WHERE id = ?",
+                (new_controller_id, train_id),
+            )
+            conn.commit()
+            logger.info(f"Reassigned train {train_id} to controller {new_controller_id}")
+        except sqlite3.Error:
+            logger.exception(f"Failed to reassign train {train_id}")
+            return False
+        else:
+            return True
+        finally:
+            conn.close()
+
+    def update_train(
+        self,
+        train_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        model: Optional[str] = None,
+        plugin_name: Optional[str] = None,
+        plugin_config: Optional[str] = None,
+    ) -> bool:
+        """Update train fields.
+
+        Args:
+            train_id: UUID of train to update
+            name: New name (optional)
+            description: New description (optional)
+            model: New model (optional)
+            plugin_name: New plugin name (optional)
+            plugin_config: New plugin config JSON (optional)
+
+        Returns:
+            True if update successful
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            updates = []
+            params = []
+
+            if name is not None:
+                updates.append("name = ?")
+                params.append(name)
+            if description is not None:
+                updates.append("description = ?")
+                params.append(description)
+            if model is not None:
+                updates.append("model = ?")
+                params.append(model)
+            if plugin_name is not None:
+                updates.append("plugin_name = ?")
+                params.append(plugin_name)
+            if plugin_config is not None:
+                updates.append("plugin_config = ?")
+                params.append(plugin_config)
+
+            if updates:
+                params.append(train_id)
+                query = f"UPDATE trains SET {', '.join(updates)} WHERE id = ?"  # nosec B608
+                conn.execute(query, params)
+                conn.commit()
+                logger.info(f"Updated train: {train_id}")
+        except sqlite3.Error:
+            logger.exception(f"Failed to update train {train_id}")
+            return False
+        else:
+            return bool(updates)
+        finally:
+            conn.close()
+
     def get_trains_for_controller(self, controller_id: str) -> list[dict[str, Any]]:
         """Get all trains assigned to a controller.
 

@@ -17,6 +17,7 @@ Or in simulation mode:
     LOCAL_DEV=true python app/main.py
 """
 
+import asyncio
 import logging
 import os
 import sys
@@ -128,6 +129,7 @@ class EdgeControllerApp:
         self.mqtt_client: Optional[MQTTClient] = None
         self.hardware_controller: Optional[Any] = None
         self.train_id: Optional[str] = None
+        self.speed_task: Optional[asyncio.Task] = None  # Track speed ramping task
 
     def initialize(self) -> bool:  # noqa: PLR0915
         """Initialize edge controller components.
@@ -284,8 +286,75 @@ class EdgeControllerApp:
         logger.info(f">>> COMMAND RECEIVED: {command}")
         logger.info("=" * 40)
 
-        # Execute command on hardware
+        # For setSpeed commands, use async speed ramping
+        action = command.get("action")
+        if action == "setSpeed" or ("speed" in command and action is None):
+            speed = command.get("speed")
+            if speed is not None:
+                # Cancel any existing speed ramp
+                if self.speed_task and not self.speed_task.done():
+                    self.speed_task.cancel()
+                # Create async task for speed ramping
+                self.speed_task = asyncio.create_task(self._handle_speed_command(speed))
+                return
+
+        # Execute other commands on hardware
         self._execute_hardware_command(command)
+
+    async def _handle_speed_command(self, target_speed: int) -> None:
+        """Handle speed command with gradual ramping.
+
+        Uses the same speed ramping logic as the HTTP controller
+        but updates train_status and publishes status via MQTT.
+
+        Args:
+            target_speed: Target speed (0-100)
+        """
+        try:
+            # Import here to avoid circular imports
+            from .controllers import train_status
+
+            logger.info(f"Starting speed ramp to {target_speed}")
+
+            # Use the speed ramping from controllers.py but with MQTT publishing
+            current_speed = train_status["speed"]
+            speed_diff = target_speed - current_speed
+
+            if speed_diff == 0:
+                logger.info(f"Speed already at target: {target_speed}")
+                return
+
+            # Calculate timing: 3 seconds total, steps of 1 speed unit
+            total_steps = abs(speed_diff)
+            step_delay = 3.0 / total_steps if total_steps > 0 else 0
+            step_direction = 1 if speed_diff > 0 else -1
+
+            logger.info(
+                f"Speed ramp: {current_speed} -> {target_speed} over 3 seconds ({total_steps} steps)"
+            )
+
+            # Ramp through intermediate speeds
+            for step in range(1, total_steps + 1):
+                new_speed = current_speed + (step * step_direction)
+                train_status["speed"] = new_speed
+
+                # Update hardware controller
+                self.hardware_controller.set_speed(new_speed)
+
+                # Publish intermediate status via MQTT
+                logger.debug(f"Ramping speed to {new_speed}")
+                self._publish_current_status()
+
+                # Wait before next step (except on final step)
+                if step < total_steps:
+                    await asyncio.sleep(step_delay)
+
+            logger.info(f"Speed ramp completed: final speed = {target_speed}")
+
+        except Exception:
+            logger.exception("Error in speed ramp command")
+            # Publish current status even if there was an error
+            self._publish_current_status()
 
     def _execute_hardware_command(self, command: dict[str, Any]) -> None:
         """Execute command on hardware controller.

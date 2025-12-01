@@ -193,7 +193,8 @@ class ConfigManager:
         description: str = "",
         model: str = "",
         plugin_name: str = "dc_motor",
-        plugin_config: dict | None = None,
+        plugin_config: Optional[dict] = None,
+        reassign: bool = False,
     ) -> Train:
         """Register a new train for a controller.
 
@@ -205,6 +206,7 @@ class ConfigManager:
             model: Optional model name/number
             plugin_name: Hardware plugin name (default: dc_motor)
             plugin_config: Plugin configuration dict
+            reassign: If true, reassign train from existing controller
 
         Returns:
             Train model object representing the created train
@@ -233,22 +235,44 @@ class ConfigManager:
             plugin_config = {}
         plugin_config_json = json.dumps(plugin_config)
 
-        # Add train to database
+        # Check if train already exists
+        existing_train = self.repository.get_train(train_id)
+        if existing_train and not reassign:
+            msg = f"Train {train_id} already exists"
+            raise ConfigurationError(msg)
+
+        # Add train to database (or reassign if exists)
         try:
-            self.repository.add_train(
-                train_id=train_id,
-                name=name,
-                controller_id=controller_uuid,
-                description=description,
-                model=model,
-                plugin_name=plugin_name,
-                plugin_config=plugin_config_json,
-            )
+            if existing_train and reassign:
+                # Reassign train to new controller
+                logger.info(f"Reassigning train {train_id} to controller {controller_uuid}")
+                self.repository.update_train_controller(train_id, controller_uuid)
+                # Update other train details if provided
+                self.repository.update_train(
+                    train_id=train_id,
+                    name=name,
+                    description=description,
+                    model=model,
+                    plugin_name=plugin_name,
+                    plugin_config=plugin_config_json,
+                )
+            else:
+                # Add new train
+                self.repository.add_train(
+                    train_id=train_id,
+                    name=name,
+                    controller_id=controller_uuid,
+                    description=description,
+                    model=model,
+                    plugin_name=plugin_name,
+                    plugin_config=plugin_config_json,
+                )
         except Exception as add_error:
             msg = f"Failed to add train {train_id}: {add_error}"
             raise ConfigurationError(msg) from add_error
 
-        logger.info(f"Registered train: {name} ({train_id}) for controller {controller_uuid}")
+        action = "Reassigned" if (existing_train and reassign) else "Registered"
+        logger.info(f"{action} train: {name} ({train_id}) for controller {controller_uuid}")
 
         # Return Train model
         from app.models.schemas import TrainPlugin
@@ -481,3 +505,40 @@ class ConfigManager:
         """
         value = self.repository.get_metadata("last_updated")
         return value if value else ""
+
+    def get_controller_for_train(self, train_id: str) -> Optional[EdgeController]:
+        """Get the controller that manages a specific train.
+
+        Args:
+            train_id: UUID of the train
+
+        Returns:
+            EdgeController model or None if train not found
+
+        Example:
+            >>> controller = manager.get_controller_for_train("train-123")
+            >>> print(f"Train managed by: {controller.name}")
+        """
+        train_data = self.repository.get_train(train_id)
+        if not train_data:
+            return None
+
+        controller_id = train_data.get("edge_controller_id")
+        if not controller_id:
+            return None
+
+        controller_data = self.repository.get_edge_controller(controller_id)
+        if not controller_data:
+            return None
+
+        # Convert to EdgeController model
+        from app.models.schemas import EdgeController
+
+        return EdgeController(
+            id=controller_data["id"],
+            name=controller_data["name"],
+            description=controller_data.get("description"),
+            address=controller_data["address"],
+            enabled=bool(controller_data.get("enabled", True)),
+            trains=[],  # We don't need to populate trains for this use case
+        )

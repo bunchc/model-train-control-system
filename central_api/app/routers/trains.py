@@ -16,10 +16,10 @@ MQTT Integration:
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from app.models.schemas import Train, TrainStatus
-from app.services.mqtt_adapter import get_train_status, publish_command
+from app.services.mqtt_adapter import publish_command
 
 
 logger = logging.getLogger("central_api.routers.trains")
@@ -33,13 +33,12 @@ if not logger.hasHandlers():
 router = APIRouter()
 
 
-@router.get("/", response_model=list[Train])
-async def list_trains():
+@router.get("/trains", response_model=list[Train])
+async def list_trains(request: Request):
     """List all available trains.
 
     Returns a list of all trains currently configured in the system.
-    This is currently returning mock data; will be replaced with
-    database queries via ConfigManager.
+    Retrieved from the database via ConfigManager with current status.
 
     Returns:
         List of Train objects with current status
@@ -48,47 +47,31 @@ async def list_trains():
         ```bash
         curl http://localhost:8000/api/trains
         ```
-
-        Response:
-        ```json
-        [
-          {
-            "id": "1",
-            "name": "Express",
-            "status": {
-              "train_id": "1",
-              "speed": 0,
-              "voltage": 12.0,
-              "current": 0.0,
-              "position": "section_A"
-            }
-          }
-        ]
-        ```
     """
-    logger.info("GET /api/trains called")
-    trains = [
-        Train(
-            id="1",
-            name="Express",
-            status=TrainStatus(
-                train_id="1", speed=0, voltage=12.0, current=0.0, position="section_A"
-            ),
-        ),
-        Train(
-            id="2",
-            name="Freight",
-            status=TrainStatus(
-                train_id="2", speed=50, voltage=12.3, current=0.8, position="section_B"
-            ),
-        ),
-    ]
-    logger.debug(f"Returning mock trains: {[t.id for t in trains]}")
+    logger.info("GET /trains called")
+    config_manager = request.app.state.config_manager
+    trains = config_manager.get_trains()
+
+    # Add status data to each train
+    for train in trains:
+        try:
+            status = config_manager.get_train_status(train.id)
+            train.status = status
+        except Exception as e:
+            logger.debug(f"No status found for train {train.id}: {e}")
+            # Provide default status instead of None to show trains as "online" with zero values
+            from app.models.schemas import TrainStatus
+
+            train.status = TrainStatus(
+                train_id=train.id, speed=0, voltage=0.0, current=0.0, position="unknown"
+            )
+
+    logger.debug(f"Returning {len(trains)} trains from database")
     return trains
 
 
-@router.post("/{train_id}/command")
-async def send_command(train_id: str, command: dict):
+@router.post("/trains/{train_id}/command")
+async def send_command(train_id: str, command: dict, request: Request):
     """Send control command to train via MQTT.
 
     Publishes command to MQTT topic trains/{train_id}/commands.
@@ -99,22 +82,24 @@ async def send_command(train_id: str, command: dict):
         command: Command payload containing:
             - action: Command type ("setSpeed", "start", "stop")
             - speed: Target speed 0-100 (required for "setSpeed")
+        request: FastAPI request object
 
     Returns:
         Success confirmation message
 
     Raises:
+        HTTPException: 404 if train not found
         HTTPException: 400 if command publish fails
 
     Example:
         ```bash
         # Set speed to 75
-        curl -X POST http://localhost:8000/api/trains/1/command \
+        curl -X POST http://localhost:8000/api/trains/{train_id}/command \
           -H "Content-Type: application/json" \
           -d '{"action": "setSpeed", "speed": 75}'
 
         # Stop train
-        curl -X POST http://localhost:8000/api/trains/1/command \
+        curl -X POST http://localhost:8000/api/trains/{train_id}/command \
           -H "Content-Type: application/json" \
           -d '{"action": "stop"}'
         ```
@@ -124,24 +109,36 @@ async def send_command(train_id: str, command: dict):
         {"message": "Command sent successfully"}
         ```
     """
-    logger.info(f"POST /api/trains/{train_id}/command called with: {command}")
+    logger.info(f"POST /trains/{train_id}/command called with: {command}")
+
+    # Verify train exists
+    config_manager = request.app.state.config_manager
+    train = config_manager.get_train(train_id)
+    if not train:
+        logger.warning(f"Train not found: {train_id}")
+        raise HTTPException(status_code=404, detail="Train not found")
+
+    # Send command via MQTT
     success = publish_command(train_id, command)
     if not success:
         logger.error(f"Failed to send command to train {train_id}")
         raise HTTPException(status_code=400, detail="Failed to send command")
+
     logger.info(f"Command sent successfully to train {train_id}")
     return {"message": "Command sent successfully"}
 
 
-@router.get("/{train_id}/status")
-async def get_status(train_id: str):
-    """Get real-time status for a train.
+@router.get("/trains/{train_id}/status")
+async def get_status(train_id: str, request: Request):
+    """Get real-time status for a train from the database.
 
-    Queries the edge controller via MQTT for the current train status.
-    Returns the most recent status update received from the edge controller.
+    Retrieves the latest status for a train that was previously stored
+    from MQTT status updates. The Central API subscribes to MQTT status
+    topics and automatically stores updates in the database.
 
     Args:
         train_id: Unique identifier of the train
+        request: FastAPI request object
 
     Returns:
         TrainStatus object containing:
@@ -153,7 +150,7 @@ async def get_status(train_id: str):
             - timestamp: Status timestamp
 
     Raises:
-        HTTPException: 404 if no status available or timeout
+        HTTPException: 404 if no status available
 
     Example:
         ```bash
@@ -168,14 +165,32 @@ async def get_status(train_id: str):
           "voltage": 12.3,
           "current": 0.8,
           "position": "section_A",
-          "timestamp": "2025-11-21T10:15:32Z"
+          "timestamp": "2025-12-01T19:15:32Z"
         }
         ```
     """
     logger.info(f"GET /api/trains/{train_id}/status called")
-    status = get_train_status(train_id, local_testing=False)
-    if status is None:
-        logger.warning(f"No status received for train {train_id}")
+
+    config_manager = getattr(request.app.state, "config_manager", None)
+
+    if not config_manager:
+        logger.error("Config manager not available")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    # Get status from database (stored by MQTT service)
+    status_data = config_manager.repository.get_train_status(train_id)
+    if not status_data:
+        logger.warning(f"No status found for train {train_id}")
         raise HTTPException(status_code=404, detail="Train status not available")
-    logger.debug(f"Returning status for train {train_id}: {status}")
-    return status
+
+    logger.debug(f"Returning status for train {train_id}: {status_data}")
+
+    # Convert to TrainStatus model
+    return TrainStatus(
+        train_id=status_data["train_id"],
+        speed=status_data["speed"],
+        voltage=status_data.get("voltage", 0.0),
+        current=status_data.get("current", 0.0),
+        position=status_data.get("position", "unknown"),
+        timestamp=status_data.get("timestamp"),
+    )

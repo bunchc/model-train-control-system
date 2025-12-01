@@ -104,23 +104,7 @@ def get_full_config():
     return _get_config().get_full_config()
 
 
-# New endpoints for trains
-@router.get("/trains", response_model=list[Train])
-def list_all_trains():
-    """List all trains in the system.
-
-    Returns:
-        List of Train configuration objects
-
-    Example:
-        ```bash
-        curl http://localhost:8000/api/trains
-        ```
-    """
-    logger.info("GET /trains called")
-    return _get_config().get_trains()
-
-
+# New endpoints for trains (moved to trains.py)
 @router.get("/config/trains", response_model=list[Train])
 def list_all_trains_config():
     """List all trains in the system (config alias).
@@ -333,6 +317,7 @@ def register_train_for_controller(
     description: str = Body("", description="Optional train description"),
     model: str = Body("", description="Train model name/number"),
     plugin: dict = Body(..., description="Plugin configuration"),
+    reassign: bool = Body(False, description="If true, reassign train from existing controller"),
 ):
     r"""Register a new train for a specific edge controller.
 
@@ -346,6 +331,7 @@ def register_train_for_controller(
         description: Optional description
         model: Optional model information
         plugin: Plugin configuration dict with 'name' and 'config' keys
+        reassign: If true, reassign train from existing controller to this one
 
     Returns:
         Train object representing the registered train
@@ -361,12 +347,14 @@ def register_train_for_controller(
             "train_id": "abc-123",
             "name": "Express Line",
             "model": "DC Motor",
-            "plugin": {"name": "dc_motor", "config": {"motor_port": 1}}
+            "plugin": {"name": "dc_motor", "config": {"motor_port": 1}},
+            "reassign": false
           }'
         ```
     """
     logger.info(
-        f"POST /controllers/{controller_uuid}/trains called: " f"train_id={train_id}, name={name}"
+        f"POST /controllers/{controller_uuid}/trains called: "
+        f"train_id={train_id}, name={name}, reassign={reassign}"
     )
 
     try:
@@ -378,12 +366,46 @@ def register_train_for_controller(
             model=model,
             plugin_name=plugin.get("name", "dc_motor"),
             plugin_config=plugin.get("config", {}),
+            reassign=reassign,
         )
     except Exception as e:
         if "not found" in str(e).lower():
             msg = f"Controller {controller_uuid} not found"
             raise HTTPException(status_code=400, detail=msg) from e
         if "UNIQUE constraint" in str(e) or "already exists" in str(e).lower():
+            # Check if train exists and we should return existing controller
+            if not reassign:
+                existing_controller = _get_config().get_controller_for_train(train_id)
+                if existing_controller:
+                    logger.info(
+                        f"Train {train_id} exists, returning existing controller: "
+                        f"{existing_controller.id}"
+                    )
+                    # Get the train data directly from repository
+                    train_data = _get_config().repository.get_train(train_id)
+                    if train_data:
+                        # Convert to Train model
+                        import json
+
+                        from app.models.schemas import Train, TrainPlugin
+
+                        plugin_config = (
+                            json.loads(train_data["plugin_config"])
+                            if train_data["plugin_config"]
+                            else {}
+                        )
+                        return Train(
+                            id=train_data["id"],
+                            name=train_data["name"],
+                            description=train_data.get("description", ""),
+                            model=train_data.get("model", ""),
+                            plugin=TrainPlugin(
+                                name=train_data["plugin_name"], config=plugin_config
+                            ),
+                        )
+                    # If not found in repository, fallback to 409
+                    logger.warning(f"Train {train_id} not found in repository")
+
             msg = f"Train {train_id} already exists"
             raise HTTPException(status_code=409, detail=msg) from e
         logger.exception("Failed to register train")

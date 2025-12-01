@@ -36,7 +36,9 @@ Typical usage:
     GET http://edge-controller:8080/status
 """
 
+import asyncio
 import logging
+from typing import Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -96,6 +98,99 @@ mqtt_client = None  # Will be set in main.py
 Initialized in main.py and used by handle_command() to publish status updates.
 Must be set before any commands are processed.
 """
+
+
+# Speed ramping control
+class SpeedRampManager:
+    """Manages speed ramping task to avoid global state."""
+
+    def __init__(self) -> None:
+        """Initialize the speed ramp manager with no active task."""
+        self.task: Optional[asyncio.Task] = None
+
+    def start_ramp(self, target_speed: int):
+        """Start a new speed ramp, cancelling any existing one."""
+        if self.task and not self.task.done():
+            self.task.cancel()
+            logging.info("Cancelled previous speed ramp")
+
+        self.task = asyncio.create_task(_ramp_to_speed(target_speed))
+
+
+speed_manager = SpeedRampManager()
+"""Speed ramp manager instance.
+
+Manages the active speed transition task. Only one speed ramp can be active
+at a time. If a new speed command arrives while ramping, the current ramp
+is cancelled and a new one starts.
+"""
+
+
+def start_speed_ramp(target_speed: int):
+    """Start gradual speed transition over 3 seconds.
+
+    Cancels any existing speed ramp and starts a new one.
+
+    Args:
+        target_speed: Target speed (0-100)
+
+    Implementation:
+        - Cancels any active ramp task
+        - Calculates step delay based on speed difference
+        - Updates speed incrementally with MQTT status updates
+        - Publishes final status when complete
+    """
+    # Use the speed manager to handle task lifecycle
+    speed_manager.start_ramp(target_speed)
+
+
+async def _ramp_to_speed(target_speed: int):
+    """Internal function to perform gradual speed transition.
+
+    Args:
+        target_speed: Target speed (0-100)
+    """
+    if mqtt_client is None:
+        logging.error("MQTT client not initialized, cannot ramp speed")
+        return
+
+    current_speed = train_status["speed"]
+    speed_diff = target_speed - current_speed
+
+    if speed_diff == 0:
+        logging.info(f"Speed already at target: {target_speed}")
+        return
+
+    # Calculate timing: 3 seconds total, steps of 1 speed unit
+    total_steps = abs(speed_diff)
+    step_delay = 3.0 / total_steps if total_steps > 0 else 0
+    step_direction = 1 if speed_diff > 0 else -1
+
+    logging.info(
+        f"Starting speed ramp: {current_speed} -> {target_speed} over 3 seconds ({total_steps} steps)"
+    )
+
+    try:
+        # Ramp through intermediate speeds
+        for step in range(1, total_steps + 1):
+            new_speed = current_speed + (step * step_direction)
+            train_status["speed"] = new_speed
+
+            # Publish intermediate status
+            logging.debug(f"Ramping speed to {new_speed}")
+            mqtt_client.publish_status(train_status)
+
+            # Wait before next step (except on final step)
+            if step < total_steps:
+                await asyncio.sleep(step_delay)
+
+        logging.info(f"Speed ramp completed: final speed = {target_speed}")
+
+    except asyncio.CancelledError:
+        logging.info(f"Speed ramp cancelled at speed {train_status['speed']}")
+        # Publish current status even if cancelled
+        mqtt_client.publish_status(train_status)
+        raise
 
 
 @router.post("/command")
@@ -167,14 +262,10 @@ async def handle_command(command: Command):
             return {"status": "Train stopped"}
         if command.speed is not None:
             logging.info(f"Train speed set requested: {command.speed}")
-            train_status["speed"] = command.speed
-            logging.info(
-                f"[DIAG] About to publish train status to topic: {mqtt_client.status_topic} with payload: {train_status}"
-            )
-            logging.debug(f"Command handler: train_status before publish: {train_status}")
-            mqtt_client.publish_status(train_status)
-            logging.info("[DIAG] Publish status call completed.")
-            return {"status": f"Train speed set to {command.speed}"}
+            # Start gradual speed transition instead of immediate change
+            await start_speed_ramp(command.speed)
+            return {"status": f"Train speed ramping to {command.speed}"}
+
         logging.warning("Invalid command received.")
         return {"error": "Invalid command"}
     except Exception as e:

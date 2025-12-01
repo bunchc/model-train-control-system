@@ -40,6 +40,7 @@ class Train(BaseModel):
     description: Optional[str] = None
     model: Optional[str] = None
     plugin: TrainPlugin
+    status: Optional["TrainStatus"] = None
 
 
 class EdgeController(BaseModel):
@@ -68,3 +69,7 @@ class TrainStatus(BaseModel):
     voltage: float = Field(..., ge=0)
     current: float = Field(..., ge=0)
     position: str = Field(..., min_length=1)
+
+
+# Resolve forward references after all models are defined
+Train.model_rebuild()
