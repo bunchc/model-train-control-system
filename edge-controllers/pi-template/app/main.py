@@ -322,7 +322,7 @@ class EdgeControllerApp:
                     # Use the stored main event loop reference
                     if self.main_loop:
                         future = asyncio.run_coroutine_threadsafe(
-                            self._handle_speed_command(speed), self.main_loop
+                            self._handle_speed_command(command), self.main_loop
                         )
                         self.speed_task = future
                     else:
@@ -337,17 +337,33 @@ class EdgeControllerApp:
         # Execute other commands on hardware
         self._execute_hardware_command(command)
 
-    async def _handle_speed_command(self, target_speed: int) -> None:
+    async def _handle_speed_command(self, command: dict) -> None:
         """Handle speed command with gradual ramping.
 
         Uses the same speed ramping logic as the HTTP controller
         but updates train_status and publishes status via MQTT.
 
         Args:
-            target_speed: Target speed (0-100)
+            command: Full command dictionary with 'speed' and optional 'direction'
         """
         try:
+            target_speed = command.get("speed", 50)
             logger.info(f"Starting speed ramp to {target_speed}")
+
+            # Handle direction change if specified
+            if "direction" in command:
+
+                def normalize_direction(direction_param):
+                    """Convert direction parameter to integer (1=forward, 0=reverse)."""
+                    if direction_param is None:
+                        return 1  # Default to forward
+                    if isinstance(direction_param, str):
+                        return 1 if direction_param.upper() == "FORWARD" else 0
+                    return int(direction_param)  # Pass through integers
+
+                direction = normalize_direction(command.get("direction"))
+                logger.info(f"Setting direction to {'forward' if direction == 1 else 'reverse'}")
+                self.hardware_controller.set_direction(direction)
 
             # Get current speed from local state
             current_speed = self.current_speed
