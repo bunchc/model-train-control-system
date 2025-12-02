@@ -56,16 +56,15 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ trainId, currentSpee
   };
 
   const handleApplySettings = () => {
-    // Send direction first, then speed
+    // Send speed and direction in single command
     handleCommand(
-      { action: direction, direction },
-      `Direction set to ${direction}`
+      {
+        action: 'setSpeed',
+        speed,
+        direction: direction.toUpperCase() as 'FORWARD' | 'BACKWARD'
+      },
+      `Speed set to ${speed}% (${direction})`
     );
-
-    // Small delay to ensure direction is set before speed
-    setTimeout(() => {
-      handleCommand({ action: 'setSpeed', speed }, `Speed set to ${speed}%`);
-    }, 100);
   };
 
   const handleStart = () => {
