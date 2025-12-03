@@ -12,9 +12,11 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    host: '0.0.0.0', // Listen on all interfaces for Docker networking
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        // Use Docker service name when running in container, localhost otherwise
+        target: process.env.VITE_API_PROXY_TARGET || 'http://central_api:8000',
         changeOrigin: true,
       },
     },

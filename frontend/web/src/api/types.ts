@@ -28,6 +28,13 @@ export interface Train {
   description?: string | null;
   model?: string | null;
   plugin: TrainPlugin;
+  invert_directions?: boolean;
+}
+
+export interface TrainUpdateRequest {
+  name?: string;
+  description?: string | null;
+  invert_directions?: boolean;
 }
 
 export interface TrainStatus {

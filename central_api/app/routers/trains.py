@@ -18,7 +18,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app.models.schemas import Train, TrainStatus
+from app.models.schemas import Train, TrainStatus, TrainUpdateRequest
 from app.services.mqtt_adapter import publish_command
 
 
@@ -68,6 +68,103 @@ async def list_trains(request: Request):
 
     logger.debug(f"Returning {len(trains)} trains from database")
     return trains
+
+
+@router.put("/trains/{train_id}", response_model=Train)
+async def update_train(
+    train_id: str,
+    update_request: TrainUpdateRequest,
+    request: Request,
+):
+    """Update train configuration.
+
+    Allows partial updates of train properties. Only provided fields
+    will be updated - omitted fields remain unchanged.
+
+    Args:
+        train_id: Unique identifier of the train
+        update_request: TrainUpdateRequest with optional name, description, invert_directions
+        request: FastAPI request object
+
+    Returns:
+        Updated Train object with all current configuration
+
+    Raises:
+        HTTPException: 404 if train not found
+        HTTPException: 400 if validation fails
+        HTTPException: 500 if update operation fails
+
+    Example:
+        ```bash
+        # Update name only
+        curl -X PUT http://localhost:8000/api/trains/train-123 \
+          -H "Content-Type: application/json" \
+          -d '{"name": "Express Line Engine"}'
+
+        # Update multiple fields
+        curl -X PUT http://localhost:8000/api/trains/train-123 \
+          -H "Content-Type: application/json" \
+          -d '{"name": "Express", "description": "Fast passenger train", "invert_directions": true}'
+        ```
+
+        Response:
+        ```json
+        {
+          "id": "train-123",
+          "name": "Express",
+          "description": "Fast passenger train",
+          "model": "Bachmann E-Z",
+          "plugin": {"name": "dc_motor", "config": {}},
+          "invert_directions": true,
+          "status": {...}
+        }
+        ```
+    """
+    logger.info(
+        f"PUT /trains/{train_id} - update_request={update_request.model_dump(exclude_none=True)}"
+    )
+
+    config_manager = getattr(request.app.state, "config_manager", None)
+    if not config_manager:
+        logger.error("Config manager not available")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    try:
+        # Call service layer to update train
+        # Only pass non-None values (partial update)
+        updated_train = config_manager.update_train(
+            train_id=train_id,
+            name=update_request.name,
+            description=update_request.description,
+            invert_directions=update_request.invert_directions,
+        )
+
+        # Add current status to response
+        try:
+            status = config_manager.get_train_status(train_id)
+            updated_train.status = status
+        except Exception as e:
+            logger.debug(f"No status found for train {train_id}: {e}")
+            # Provide default status
+            updated_train.status = TrainStatus(
+                train_id=train_id, speed=0, voltage=0.0, current=0.0, position="unknown"
+            )
+
+        logger.info(f"Successfully updated train {train_id}")
+
+    except ValueError as e:
+        # Train not found
+        logger.warning(f"Train {train_id} not found: {e}")
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    except Exception as e:
+        # Unexpected error
+        logger.exception(f"Failed to update train {train_id}")
+        msg = f"Update failed: {e!s}"
+        raise HTTPException(status_code=500, detail=msg) from e
+
+    else:
+        return updated_train
 
 
 @router.post("/trains/{train_id}/command")

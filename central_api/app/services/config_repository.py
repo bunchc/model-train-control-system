@@ -186,6 +186,7 @@ class ConfigRepository:
         model: Optional[str] = None,
         plugin_name: Optional[str] = None,
         plugin_config: Optional[str] = None,
+        invert_directions: Optional[bool] = None,
     ) -> bool:
         """Update train fields.
 
@@ -196,6 +197,7 @@ class ConfigRepository:
             model: New model (optional)
             plugin_name: New plugin name (optional)
             plugin_config: New plugin config JSON (optional)
+            invert_directions: Invert motor direction (optional)
 
         Returns:
             True if update successful
@@ -220,6 +222,9 @@ class ConfigRepository:
             if plugin_config is not None:
                 updates.append("plugin_config = ?")
                 params.append(plugin_config)
+            if invert_directions is not None:
+                updates.append("invert_directions = ?")
+                params.append(1 if invert_directions else 0)
 
             if updates:
                 params.append(train_id)

@@ -174,3 +174,269 @@ class TestConfigManager:
 
         assert UUID_PATTERN.match(valid_uuid)
         assert not UUID_PATTERN.match(invalid_uuid)
+
+    def test_update_train_name_only(self) -> None:
+        """Test updating only the train name."""
+        with patch.object(ConfigManager, "_initialize_configuration"):
+            manager = ConfigManager()
+
+        manager.repository = MagicMock()
+
+        # Mock existing train check and updated train fetch
+        manager.repository.get_train.side_effect = [
+            # First call: check train exists
+            {
+                "id": "train-123",
+                "name": "Old Name",
+                "description": "Test Desc",
+                "plugin_name": "dc_motor",
+                "plugin_config": "{}",
+                "invert_directions": 0,
+            },
+            # Second call: fetch updated train
+            {
+                "id": "train-123",
+                "name": "New Name",
+                "description": "Test Desc",
+                "plugin_name": "dc_motor",
+                "plugin_config": "{}",
+                "invert_directions": 0,
+            },
+        ]
+        manager.repository.update_train.return_value = True
+
+        # Execute
+        result = manager.update_train("train-123", name="New Name")
+
+        # Verify
+        assert result.name == "New Name"
+        assert result.description == "Test Desc"
+        assert result.invert_directions is False
+        manager.repository.update_train.assert_called_once_with(
+            train_id="train-123",
+            name="New Name",
+            description=None,
+            invert_directions=None,
+        )
+
+    def test_update_train_description_only(self) -> None:
+        """Test updating only the train description."""
+        with patch.object(ConfigManager, "_initialize_configuration"):
+            manager = ConfigManager()
+
+        manager.repository = MagicMock()
+        manager.repository.get_train.side_effect = [
+            {
+                "id": "train-456",
+                "name": "Express",
+                "description": "Old description",
+                "plugin_name": "dc_motor",
+                "plugin_config": "{}",
+                "invert_directions": 0,
+            },
+            {
+                "id": "train-456",
+                "name": "Express",
+                "description": "New description",
+                "plugin_name": "dc_motor",
+                "plugin_config": "{}",
+                "invert_directions": 0,
+            },
+        ]
+        manager.repository.update_train.return_value = True
+
+        result = manager.update_train("train-456", description="New description")
+
+        assert result.description == "New description"
+        assert result.name == "Express"
+        manager.repository.update_train.assert_called_once_with(
+            train_id="train-456",
+            name=None,
+            description="New description",
+            invert_directions=None,
+        )
+
+    def test_update_train_invert_directions_only(self) -> None:
+        """Test updating only the invert_directions flag."""
+        with patch.object(ConfigManager, "_initialize_configuration"):
+            manager = ConfigManager()
+
+        manager.repository = MagicMock()
+        manager.repository.get_train.side_effect = [
+            {
+                "id": "train-789",
+                "name": "Freight",
+                "description": "Heavy cargo",
+                "plugin_name": "dc_motor",
+                "plugin_config": "{}",
+                "invert_directions": 0,
+            },
+            {
+                "id": "train-789",
+                "name": "Freight",
+                "description": "Heavy cargo",
+                "plugin_name": "dc_motor",
+                "plugin_config": "{}",
+                "invert_directions": 1,
+            },
+        ]
+        manager.repository.update_train.return_value = True
+
+        result = manager.update_train("train-789", invert_directions=True)
+
+        assert result.invert_directions is True
+        assert result.name == "Freight"
+        manager.repository.update_train.assert_called_once_with(
+            train_id="train-789",
+            name=None,
+            description=None,
+            invert_directions=True,
+        )
+
+    def test_update_train_multiple_fields(self) -> None:
+        """Test updating name, description, and invert_directions together."""
+        with patch.object(ConfigManager, "_initialize_configuration"):
+            manager = ConfigManager()
+
+        manager.repository = MagicMock()
+        manager.repository.get_train.side_effect = [
+            {
+                "id": "train-abc",
+                "name": "Old Name",
+                "description": "Old Desc",
+                "plugin_name": "dc_motor",
+                "plugin_config": "{}",
+                "invert_directions": 0,
+            },
+            {
+                "id": "train-abc",
+                "name": "New Name",
+                "description": "New Desc",
+                "plugin_name": "dc_motor",
+                "plugin_config": "{}",
+                "invert_directions": 1,
+            },
+        ]
+        manager.repository.update_train.return_value = True
+
+        result = manager.update_train(
+            "train-abc",
+            name="New Name",
+            description="New Desc",
+            invert_directions=True,
+        )
+
+        assert result.name == "New Name"
+        assert result.description == "New Desc"
+        assert result.invert_directions is True
+        manager.repository.update_train.assert_called_once_with(
+            train_id="train-abc",
+            name="New Name",
+            description="New Desc",
+            invert_directions=True,
+        )
+
+    def test_update_train_not_found(self) -> None:
+        """Test updating non-existent train raises ValueError."""
+        with patch.object(ConfigManager, "_initialize_configuration"):
+            manager = ConfigManager()
+
+        manager.repository = MagicMock()
+        manager.repository.get_train.return_value = None  # Train doesn't exist
+
+        with pytest.raises(ValueError, match="Train train-999 not found"):
+            manager.update_train("train-999", name="New Name")
+
+    def test_update_train_repository_fails(self) -> None:
+        """Test update failure in repository layer."""
+        with patch.object(ConfigManager, "_initialize_configuration"):
+            manager = ConfigManager()
+
+        manager.repository = MagicMock()
+        manager.repository.get_train.return_value = {
+            "id": "train-123",
+            "name": "Test",
+            "plugin_name": "dc_motor",
+            "plugin_config": "{}",
+        }
+        manager.repository.update_train.return_value = False  # Update failed
+
+        with pytest.raises(RuntimeError, match="Failed to update train"):
+            manager.update_train("train-123", name="New Name")
+
+    def test_update_train_disappears_after_update(self) -> None:
+        """Test edge case where train is deleted during update."""
+        with patch.object(ConfigManager, "_initialize_configuration"):
+            manager = ConfigManager()
+
+        manager.repository = MagicMock()
+        manager.repository.get_train.side_effect = [
+            {"id": "train-123", "name": "Test", "plugin_name": "dc_motor", "plugin_config": "{}"},
+            None,  # Gone after update
+        ]
+        manager.repository.update_train.return_value = True
+
+        with pytest.raises(RuntimeError, match="disappeared after update"):
+            manager.update_train("train-123", name="New Name")
+
+    def test_update_train_bool_conversion(self) -> None:
+        """Test that SQLite integer is converted back to bool."""
+        with patch.object(ConfigManager, "_initialize_configuration"):
+            manager = ConfigManager()
+
+        manager.repository = MagicMock()
+
+        # Test with invert_directions = 1 (True)
+        manager.repository.get_train.side_effect = [
+            {
+                "id": "train-bool",
+                "name": "Test",
+                "plugin_name": "dc_motor",
+                "plugin_config": "{}",
+                "invert_directions": 0,
+            },
+            {
+                "id": "train-bool",
+                "name": "Test",
+                "plugin_name": "dc_motor",
+                "plugin_config": "{}",
+                "invert_directions": 1,
+            },
+        ]
+        manager.repository.update_train.return_value = True
+
+        result = manager.update_train("train-bool", invert_directions=True)
+        assert result.invert_directions is True
+        assert isinstance(result.invert_directions, bool)
+
+    def test_update_train_plugin_config_parsing(self) -> None:
+        """Test that plugin_config JSON is properly parsed."""
+        with patch.object(ConfigManager, "_initialize_configuration"):
+            manager = ConfigManager()
+
+        manager.repository = MagicMock()
+        plugin_config_json = '{"motor_type": "DC", "max_voltage": 12}'
+
+        manager.repository.get_train.side_effect = [
+            {
+                "id": "train-plugin",
+                "name": "Test",
+                "plugin_name": "dc_motor",
+                "plugin_config": plugin_config_json,
+                "invert_directions": 0,
+            },
+            {
+                "id": "train-plugin",
+                "name": "Updated Test",
+                "plugin_name": "dc_motor",
+                "plugin_config": plugin_config_json,
+                "invert_directions": 0,
+            },
+        ]
+        manager.repository.update_train.return_value = True
+
+        result = manager.update_train("train-plugin", name="Updated Test")
+
+        assert result.plugin.name == "dc_motor"
+        assert result.plugin.config["motor_type"] == "DC"
+        assert result.plugin.config["max_voltage"] == 12

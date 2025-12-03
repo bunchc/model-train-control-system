@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient, UseQueryResult, UseMutationResult } from '@tanstack/react-query';
-import { Train, TrainStatus, TrainCommand, EdgeController, Plugin, FullConfig } from './types';
-import { getTrains, sendTrainCommand, getTrainStatus } from './endpoints/trains';
+import { Train, TrainStatus, TrainCommand, TrainUpdateRequest, EdgeController, Plugin, FullConfig } from './types';
+import { getTrains, sendTrainCommand, getTrainStatus, updateTrain } from './endpoints/trains';
 import { getFullConfig, getConfigTrains, getPlugins } from './endpoints/config';
 import { getControllers, getControllerConfig } from './endpoints/controllers';
 
@@ -33,12 +33,25 @@ export const useTrains = (): UseQueryResult<Train[], Error> => {
 /**
  * Hook: Fetch train status
  * Auto-refresh every 2 seconds for real-time telemetry
+ * Only polls after initial successful fetch to avoid hammering on 404s
  */
 export const useTrainStatus = (trainId: string): UseQueryResult<TrainStatus, Error> => {
   return useQuery({
     queryKey: queryKeys.trainStatus(trainId),
     queryFn: () => getTrainStatus(trainId),
-    refetchInterval: 2000, // Refresh every 2 seconds
+    refetchInterval: (data) => {
+      // Only poll if we've successfully fetched data at least once
+      // This prevents continuous polling when status doesn't exist (404)
+      return data ? 2000 : false;
+    },
+    retry: (failureCount, error: any) => {
+      // Don't retry on 404 (status not found)
+      if (error?.response?.status === 404) {
+        return false;
+      }
+      // Retry other errors up to 3 times
+      return failureCount < 3;
+    },
     enabled: !!trainId,
   });
 };
@@ -59,6 +72,28 @@ export const useSendCommand = (): UseMutationResult<
     onSuccess: (_, variables) => {
       // Invalidate train status to force refresh
       queryClient.invalidateQueries({ queryKey: queryKeys.trainStatus(variables.trainId) });
+    },
+  });
+};
+
+/**
+ * Hook: Update train configuration
+ * Invalidates trains cache on success to trigger re-fetch
+ */
+export const useUpdateTrain = (): UseMutationResult<
+  Train,
+  Error,
+  { trainId: string; updates: TrainUpdateRequest }
+> => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ trainId, updates }) => updateTrain(trainId, updates),
+    onSuccess: () => {
+      // Invalidate trains list to force refresh
+      queryClient.invalidateQueries({ queryKey: queryKeys.trains });
+      // Also invalidate config trains if they're separate
+      queryClient.invalidateQueries({ queryKey: queryKeys.configTrains });
     },
   });
 };

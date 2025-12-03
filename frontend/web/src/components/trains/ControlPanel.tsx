@@ -18,12 +18,13 @@ export interface ControlPanelProps {
   trainId: string;
   currentSpeed: number;
   isOnline: boolean;
+  invertDirections?: boolean;
 }
 
 /**
  * Train control panel with speed, direction, and emergency stop
  */
-export const ControlPanel: React.FC<ControlPanelProps> = ({ trainId, currentSpeed, isOnline }) => {
+export const ControlPanel: React.FC<ControlPanelProps> = ({ trainId, currentSpeed, isOnline, invertDirections = false }) => {
   const [speed, setSpeed] = useState(currentSpeed);
   const [direction, setDirection] = useState<'forward' | 'reverse'>('forward');
   const { mutate: sendCommand, isPending } = useSendCommand();
@@ -56,14 +57,20 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ trainId, currentSpee
   };
 
   const handleApplySettings = () => {
+    // Invert direction if the train has invert_directions enabled
+    // This swaps Forward<->Reverse at the command level so the motor runs the expected direction
+    const actualDirection = invertDirections
+      ? (direction === 'forward' ? 'reverse' : 'forward')
+      : direction;
+
     // Send speed and direction in single command
     handleCommand(
       {
         action: 'setSpeed',
         speed,
-        direction: direction.toUpperCase() as 'FORWARD' | 'BACKWARD'
+        direction: actualDirection.toUpperCase() as 'FORWARD' | 'BACKWARD'
       },
-      `Speed set to ${speed}% (${direction})`
+      `Speed set to ${speed}% (${direction})${invertDirections ? ' [inverted]' : ''}`
     );
   };
 

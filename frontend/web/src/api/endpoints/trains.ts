@@ -1,5 +1,5 @@
 import { apiClient } from '../client';
-import { Train, TrainStatus, TrainCommand } from '../types';
+import { Train, TrainStatus, TrainCommand, TrainUpdateRequest } from '../types';
 
 /**
  * Fetch all trains
@@ -28,5 +28,19 @@ export const sendTrainCommand = async (
  */
 export const getTrainStatus = async (trainId: string): Promise<TrainStatus> => {
   const response = await apiClient.get<TrainStatus>(`/api/trains/${trainId}/status`);
+  return response.data;
+};
+
+/**
+ * Update train configuration (partial update)
+ */
+export const updateTrain = async (
+  trainId: string,
+  updates: TrainUpdateRequest
+): Promise<Train> => {
+  const response = await apiClient.put<Train>(
+    `/api/trains/${trainId}`,
+    updates
+  );
   return response.data;
 };

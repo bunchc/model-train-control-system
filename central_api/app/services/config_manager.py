@@ -274,6 +274,21 @@ class ConfigManager:
         action = "Reassigned" if (existing_train and reassign) else "Registered"
         logger.info(f"{action} train: {name} ({train_id}) for controller {controller_uuid}")
 
+        # Initialize default status to prevent 404s on frontend
+        # Edge controller will update with actual values when it publishes
+        try:
+            self.repository.update_train_status(
+                train_id=train_id,
+                speed=0,
+                voltage=0.0,
+                current=0.0,
+                position="unknown",
+            )
+            logger.info(f"Initialized default status for train {train_id}")
+        except Exception as status_error:
+            # Log but don't fail registration if status init fails
+            logger.warning(f"Failed to initialize status for {train_id}: {status_error}")
+
         # Return Train model
         from app.models.schemas import TrainPlugin
 
@@ -315,6 +330,7 @@ class ConfigManager:
                     description=train_row.get("description"),
                     model=train_row.get("model"),
                     plugin={"name": train_row.get("plugin_name", "unknown"), "config": {}},
+                    invert_directions=bool(train_row.get("invert_directions", 0)),
                 )
                 for train_row in train_rows
             ]
@@ -362,6 +378,7 @@ class ConfigManager:
                     description=train_row.get("description"),
                     model=train_row.get("model"),
                     plugin={"name": train_row.get("plugin_name", "unknown"), "config": {}},
+                    invert_directions=bool(train_row.get("invert_directions", 0)),
                 )
                 for train_row in train_rows
             ]
@@ -433,6 +450,7 @@ class ConfigManager:
                     "name": train.get("plugin_name", "unknown"),
                     "config": json.loads(train.get("plugin_config", "{}")),
                 },
+                invert_directions=bool(train.get("invert_directions", 0)),
             )
             for train in train_rows
         ]
@@ -459,6 +477,7 @@ class ConfigManager:
                 "name": row.get("plugin_name", "unknown"),
                 "config": json.loads(row.get("plugin_config", "{}")),
             },
+            invert_directions=bool(row.get("invert_directions", 0)),
         )
 
     def update_train_status(
@@ -474,6 +493,63 @@ class ConfigManager:
             position: Current track position/section
         """
         self.repository.update_train_status(train_id, speed, voltage, current, position)
+
+    def update_train(
+        self,
+        train_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        invert_directions: Optional[bool] = None,
+    ) -> Train:
+        """Update train configuration fields.
+
+        Args:
+            train_id: UUID of the train to update
+            name: New train name (optional)
+            description: New description (optional)
+            invert_directions: Invert motor direction (optional)
+
+        Returns:
+            Updated Train object
+
+        Raises:
+            ValueError: If train_id not found
+        """
+        # First verify train exists
+        existing = self.repository.get_train(train_id)
+        if not existing:
+            msg = f"Train {train_id} not found"
+            raise ValueError(msg)
+
+        # Call repository to update database
+        success = self.repository.update_train(
+            train_id=train_id,
+            name=name,
+            description=description,
+            invert_directions=invert_directions,
+        )
+
+        if not success:
+            msg = f"Failed to update train {train_id}"
+            raise RuntimeError(msg)
+
+        # Fetch updated train from DB and return as Train model
+        updated_row = self.repository.get_train(train_id)
+        if not updated_row:
+            msg = f"Train {train_id} disappeared after update"
+            raise RuntimeError(msg)
+
+        return Train(
+            id=updated_row["id"],
+            name=updated_row["name"],
+            description=updated_row.get("description"),
+            model=updated_row.get("model"),
+            plugin={
+                "name": updated_row.get("plugin_name", "unknown"),
+                "config": json.loads(updated_row.get("plugin_config", "{}")),
+            },
+            invert_directions=bool(updated_row.get("invert_directions", 0)),
+        )
 
     def get_train_status(self, train_id: str) -> Optional[TrainStatus]:
         """Retrieve current train status.

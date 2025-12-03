@@ -21,6 +21,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -309,32 +310,36 @@ class EdgeControllerApp:
         logger.info(f">>> COMMAND RECEIVED: {command}")
         logger.info("=" * 40)
 
-        # For setSpeed commands, use async speed ramping
         action = command.get("action")
-        if action == "setSpeed" or ("speed" in command and action is None):
-            speed = command.get("speed")
-            if speed is not None:
-                # Cancel any existing speed ramp
-                if self.speed_task and not self.speed_task.done():
-                    self.speed_task.cancel()
-                # Schedule async task for speed ramping
-                try:
-                    # Use the stored main event loop reference
-                    if self.main_loop:
+
+        # For setSpeed and setDirection commands, use async ramping for safety
+        if action in ("setSpeed", "setDirection") or ("speed" in command and action is None):
+            # Cancel any existing speed ramp
+            if self.speed_task and not self.speed_task.done():
+                self.speed_task.cancel()
+            # Schedule async task for speed/direction ramping
+            try:
+                # Use the stored main event loop reference
+                if self.main_loop:
+                    if action == "setDirection":
+                        future = asyncio.run_coroutine_threadsafe(
+                            self._handle_direction_command(command), self.main_loop
+                        )
+                    else:
                         future = asyncio.run_coroutine_threadsafe(
                             self._handle_speed_command(command), self.main_loop
                         )
-                        self.speed_task = future
-                    else:
-                        logger.warning("Main event loop not available, using synchronous execution")
-                        self._execute_hardware_command(command)
-                except RuntimeError:
-                    logger.exception("Failed to schedule speed ramping")
-                    # Fall back to synchronous execution
+                    self.speed_task = future
+                else:
+                    logger.warning("Main event loop not available, using synchronous execution")
                     self._execute_hardware_command(command)
-                return
+            except RuntimeError:
+                logger.exception("Failed to schedule async command")
+                # Fall back to synchronous execution
+                self._execute_hardware_command(command)
+            return
 
-        # Execute other commands on hardware
+        # Execute other commands on hardware (start, stop, emergencyStop)
         self._execute_hardware_command(command)
 
     async def _handle_speed_command(self, command: dict) -> None:
@@ -342,6 +347,9 @@ class EdgeControllerApp:
 
         Uses the same speed ramping logic as the HTTP controller
         but updates train_status and publishes status via MQTT.
+
+        Safety Feature: If direction change is requested while motor is running,
+        gradually ramp down to 0, change direction, then ramp up to target speed.
 
         Args:
             command: Full command dictionary with 'speed' and optional 'direction'
@@ -362,10 +370,24 @@ class EdgeControllerApp:
                     return int(direction_param)  # Pass through integers
 
                 direction = normalize_direction(command.get("direction"))
+                current_direction = self.hardware_controller.get_direction()
+                current_speed = self.hardware_controller.get_speed()
+
+                # Safety pattern: if direction is changing and motor is running,
+                # gradually ramp down first, then change direction
+                if current_speed > 0 and direction != current_direction:
+                    logger.info(
+                        f"Direction change detected while motor running (speed={current_speed}). "
+                        f"Gradually ramping down for safety..."
+                    )
+                    # Ramp down to 0
+                    await self._ramp_speed(current_speed, 0)
+                    logger.info("Motor stopped. Changing direction...")
+
                 logger.info(f"Setting direction to {'forward' if direction == 1 else 'reverse'}")
                 self.hardware_controller.set_direction(direction)
 
-            # Get current speed from local state
+            # Get current speed from local state (may have been updated by ramp down)
             current_speed = self.current_speed
             speed_diff = target_speed - current_speed
 
@@ -373,31 +395,8 @@ class EdgeControllerApp:
                 logger.info(f"Speed already at target: {target_speed}")
                 return
 
-            # Calculate timing: 3 seconds total, steps of 1 speed unit
-            total_steps = abs(speed_diff)
-            step_delay = 3.0 / total_steps if total_steps > 0 else 0
-            step_direction = 1 if speed_diff > 0 else -1
-
-            logger.info(
-                f"Speed ramp: {current_speed} -> {target_speed} over 3 seconds ({total_steps} steps)"
-            )
-
-            # Ramp through intermediate speeds
-            for step in range(1, total_steps + 1):
-                new_speed = current_speed + (step * step_direction)
-                self.current_speed = new_speed  # Update local state
-
-                # Update hardware controller
-                self.hardware_controller.set_speed(new_speed)
-
-                # Publish intermediate status via MQTT
-                logger.debug(f"Ramping speed to {new_speed}")
-                self._publish_current_status()
-
-                # Wait before next step (except on final step)
-                if step < total_steps:
-                    await asyncio.sleep(step_delay)
-
+            # Ramp to target speed
+            await self._ramp_speed(current_speed, target_speed)
             logger.info(f"Speed ramp completed: final speed = {target_speed}")
 
         except Exception:
@@ -405,7 +404,84 @@ class EdgeControllerApp:
             # Publish current status even if there was an error
             self._publish_current_status()
 
-    def _execute_hardware_command(self, command: dict[str, Any]) -> None:  # noqa: PLR0915
+    async def _ramp_speed(self, from_speed: int, to_speed: int) -> None:
+        """Gradually ramp speed from one value to another.
+
+        Args:
+            from_speed: Starting speed (0-100)
+            to_speed: Target speed (0-100)
+        """
+        speed_diff = to_speed - from_speed
+        if speed_diff == 0:
+            return
+
+        # Calculate timing: 3 seconds total, steps of 1 speed unit
+        total_steps = abs(speed_diff)
+        step_delay = 3.0 / total_steps if total_steps > 0 else 0
+        step_direction = 1 if speed_diff > 0 else -1
+
+        logger.info(f"Speed ramp: {from_speed} -> {to_speed} over 3 seconds ({total_steps} steps)")
+
+        # Ramp through intermediate speeds
+        for step in range(1, total_steps + 1):
+            new_speed = from_speed + (step * step_direction)
+            self.current_speed = new_speed  # Update local state
+
+            # Update hardware controller
+            self.hardware_controller.set_speed(new_speed)
+
+            # Publish intermediate status via MQTT
+            logger.debug(f"Ramping speed to {new_speed}")
+            self._publish_current_status()
+
+            # Wait before next step (except on final step)
+            if step < total_steps:
+                await asyncio.sleep(step_delay)
+
+    async def _handle_direction_command(self, command: dict) -> None:
+        """Handle direction change command with gradual ramping for safety.
+
+        If the motor is running, gradually ramps down to 0 before changing
+        direction to protect the motor and gears.
+
+        Args:
+            command: Command dictionary with 'direction' key
+        """
+        try:
+
+            def normalize_direction(direction_param):
+                """Convert direction parameter to integer (1=forward, 0=reverse)."""
+                if direction_param is None:
+                    return 1  # Default to forward
+                if isinstance(direction_param, str):
+                    return 1 if direction_param.upper() == "FORWARD" else 0
+                return int(direction_param)  # Pass through integers
+
+            direction = normalize_direction(command.get("direction"))
+            current_direction = self.hardware_controller.get_direction()
+            current_speed = self.hardware_controller.get_speed()
+
+            # Safety pattern: if direction is changing and motor is running,
+            # gradually ramp down first
+            if current_speed > 0 and direction != current_direction:
+                logger.info(
+                    f"Direction change detected while motor running (speed={current_speed}). "
+                    f"Gradually ramping down for safety..."
+                )
+                # Ramp down to 0
+                await self._ramp_speed(current_speed, 0)
+                logger.info("Motor stopped. Changing direction...")
+
+            logger.info(f"Setting direction to {'forward' if direction == 1 else 'reverse'}")
+            self.hardware_controller.set_direction(direction)
+            self._publish_current_status()
+            logger.info(f"✓ Direction set to {'forward' if direction == 1 else 'reverse'}")
+
+        except Exception:
+            logger.exception("Error in direction command")
+            self._publish_current_status()
+
+    def _execute_hardware_command(self, command: dict[str, Any]) -> None:  # noqa: PLR0912, PLR0915
         """Execute command on hardware controller.
 
         This method translates MQTT command payloads into hardware controller
@@ -501,12 +577,27 @@ class EdgeControllerApp:
                 # Publish status update after command execution
                 self._publish_current_status()
 
-            # Command: change speed without stopping
+            # Command: change speed (sync fallback - prefer async handler for gradual ramping)
             elif action == "setSpeed":
                 speed = command.get("speed", 50)  # Default to 50% if not specified
                 # If direction is provided with setSpeed, change direction first
                 if "direction" in command:
                     direction = normalize_direction(command.get("direction"))
+                    current_direction = self.hardware_controller.get_direction()
+                    current_speed = self.hardware_controller.get_speed()
+
+                    # Safety pattern: stop before reversing if motor is running
+                    # Note: This is sync fallback - uses immediate stop instead of gradual ramp
+                    if current_speed > 0 and direction != current_direction:
+                        logger.warning(
+                            f"Direction change while running (sync fallback - immediate stop). "
+                            f"speed={current_speed}"
+                        )
+                        self.hardware_controller.stop()
+                        self.current_speed = 0
+                        self._publish_current_status()  # Notify of stop
+                        time.sleep(0.15)  # Brief delay for motor to decelerate
+
                     logger.info(
                         f"Executing SET_SPEED command with direction change (speed={speed}, direction={'forward' if direction == 1 else 'reverse'})..."
                     )
@@ -524,9 +615,24 @@ class EdgeControllerApp:
                 # Publish status update after command execution
                 self._publish_current_status()
 
-            # Command: change direction
+            # Command: change direction (sync fallback - prefer async handler for gradual ramping)
             elif action == "setDirection":
                 direction = normalize_direction(command.get("direction"))
+                current_direction = self.hardware_controller.get_direction()
+                current_speed = self.hardware_controller.get_speed()
+
+                # Safety pattern: stop before reversing if motor is running
+                # Note: This is sync fallback - uses immediate stop instead of gradual ramp
+                if current_speed > 0 and direction != current_direction:
+                    logger.warning(
+                        f"Direction change while running (sync fallback - immediate stop). "
+                        f"speed={current_speed}"
+                    )
+                    self.hardware_controller.stop()
+                    self.current_speed = 0
+                    self._publish_current_status()  # Notify of stop
+                    time.sleep(0.15)  # Brief delay for motor to decelerate
+
                 logger.info(
                     f"Executing SET_DIRECTION command (direction={'forward' if direction == 1 else 'reverse'})..."
                 )

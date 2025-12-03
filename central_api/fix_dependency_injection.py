@@ -19,7 +19,7 @@ def fix_config_router():
         line = lines[i]
 
         # Check if this line starts a function definition
-        if re.match(r'^\s*(?:async )?def \w+\(', line):
+        if re.match(r"^\s*(?:async )?def \w+\(", line):
             # Collect the full function signature
             func_lines = [line]
             indent = len(line) - len(line.lstrip())
@@ -28,32 +28,40 @@ def fix_config_router():
             j = i + 1
             while j < len(lines):
                 func_lines.append(lines[j])
-                if lines[j].strip().endswith('):'):
+                if lines[j].strip().endswith("):"):
                     break
                 j += 1
 
             # Join the function signature
-            full_signature = ''.join(func_lines)
+            full_signature = "".join(func_lines)
 
             # Check if it already has the dependency
-            if 'Depends(get_config_manager)' not in full_signature:
+            if "Depends(get_config_manager)" not in full_signature:
                 # Find the position of "):
-                close_pos = full_signature.rfind('):')
+                close_pos = full_signature.rfind("):")
                 if close_pos != -1:
                     # Insert the dependency before the closing ):
                     before = full_signature[:close_pos]
 
                     # Check if there are existing parameters
-                    if '(' in before and before.strip().endswith(','):
+                    if "(" in before and before.strip().endswith(","):
                         # Already has trailing comma
-                        dependency = '\n' + ' ' * (indent + 4) + 'config: ConfigManager = Depends(get_config_manager)'
-                    elif '()' in before:
+                        dependency = (
+                            "\n"
+                            + " " * (indent + 4)
+                            + "config: ConfigManager = Depends(get_config_manager)"
+                        )
+                    elif "()" in before:
                         # No parameters
-                        dependency = 'config: ConfigManager = Depends(get_config_manager)'
-                        before = before.replace('()', '(')
+                        dependency = "config: ConfigManager = Depends(get_config_manager)"
+                        before = before.replace("()", "(")
                     else:
                         # Has parameters, add comma
-                        dependency = ',\n' + ' ' * (indent + 4) + 'config: ConfigManager = Depends(get_config_manager)'
+                        dependency = (
+                            ",\n"
+                            + " " * (indent + 4)
+                            + "config: ConfigManager = Depends(get_config_manager)"
+                        )
 
                     after = full_signature[close_pos:]
                     full_signature = before + dependency + after

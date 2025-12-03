@@ -66,6 +66,20 @@ curl -X POST http://localhost:8000/api/trains/1/command \
   -d '{"action":"setSpeed","speed":42}'
 ```
 
+**Update train configuration:**
+
+```bash
+# Update train name only
+curl -X PUT http://localhost:8000/api/trains/1 \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Express Line Engine"}'
+
+# Update multiple fields
+curl -X PUT http://localhost:8000/api/trains/1 \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Express","description":"Fast passenger train","invert_directions":true}'
+```
+
 **Subscribe to MQTT topic:**
 
 ```bash

@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS trains (
     plugin_name TEXT NOT NULL,
     plugin_config TEXT,
     edge_controller_id TEXT NOT NULL,
+    invert_directions BOOLEAN DEFAULT 0,
     FOREIGN KEY(edge_controller_id) REFERENCES edge_controllers(id)
 );
 
