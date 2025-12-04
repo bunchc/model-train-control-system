@@ -152,6 +152,94 @@ class ConfigRepository:
         finally:
             conn.close()
 
+    def update_train_controller(self, train_id: str, new_controller_id: str) -> bool:
+        """Update the controller assignment for a train.
+
+        Args:
+            train_id: UUID of train to reassign
+            new_controller_id: UUID of new controller
+
+        Returns:
+            True if update successful
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                "UPDATE trains SET edge_controller_id = ? WHERE id = ?",
+                (new_controller_id, train_id),
+            )
+            conn.commit()
+            logger.info(f"Reassigned train {train_id} to controller {new_controller_id}")
+        except sqlite3.Error:
+            logger.exception(f"Failed to reassign train {train_id}")
+            return False
+        else:
+            return True
+        finally:
+            conn.close()
+
+    def update_train(
+        self,
+        train_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        model: Optional[str] = None,
+        plugin_name: Optional[str] = None,
+        plugin_config: Optional[str] = None,
+        invert_directions: Optional[bool] = None,
+    ) -> bool:
+        """Update train fields.
+
+        Args:
+            train_id: UUID of train to update
+            name: New name (optional)
+            description: New description (optional)
+            model: New model (optional)
+            plugin_name: New plugin name (optional)
+            plugin_config: New plugin config JSON (optional)
+            invert_directions: Invert motor direction (optional)
+
+        Returns:
+            True if update successful
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            updates = []
+            params = []
+
+            if name is not None:
+                updates.append("name = ?")
+                params.append(name)
+            if description is not None:
+                updates.append("description = ?")
+                params.append(description)
+            if model is not None:
+                updates.append("model = ?")
+                params.append(model)
+            if plugin_name is not None:
+                updates.append("plugin_name = ?")
+                params.append(plugin_name)
+            if plugin_config is not None:
+                updates.append("plugin_config = ?")
+                params.append(plugin_config)
+            if invert_directions is not None:
+                updates.append("invert_directions = ?")
+                params.append(1 if invert_directions else 0)
+
+            if updates:
+                params.append(train_id)
+                query = f"UPDATE trains SET {', '.join(updates)} WHERE id = ?"  # nosec B608
+                conn.execute(query, params)
+                conn.commit()
+                logger.info(f"Updated train: {train_id}")
+        except sqlite3.Error:
+            logger.exception(f"Failed to update train {train_id}")
+            return False
+        else:
+            return bool(updates)
+        finally:
+            conn.close()
+
     def get_trains_for_controller(self, controller_id: str) -> list[dict[str, Any]]:
         """Get all trains assigned to a controller.
 
@@ -200,6 +288,57 @@ class ConfigRepository:
         try:
             cursor = conn.execute("SELECT * FROM trains")
             return [dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def add_train(
+        self,
+        train_id: str,
+        name: str,
+        controller_id: str,
+        description: str = "",
+        model: str = "",
+        plugin_name: str = "dc_motor",
+        plugin_config: str = "{}",
+    ) -> None:
+        """Add a new train to the database.
+
+        Args:
+            train_id: Unique UUID for the train
+            name: Human-readable train name
+            controller_id: UUID of the edge controller managing this train
+            description: Optional description of the train
+            model: Optional model name/number
+            plugin_name: Hardware plugin name (default: dc_motor)
+            plugin_config: JSON string of plugin configuration
+
+        Raises:
+            sqlite3.IntegrityError: If train_id already exists or controller_id invalid
+            sqlite3.Error: For other database errors
+
+        Example:
+            >>> repo.add_train(
+            ...     train_id="abc-123",
+            ...     name="Express Line",
+            ...     controller_id="ctrl-456",
+            ...     plugin_config='{"motor_port": 1}'
+            ... )
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            conn.execute(
+                """
+                INSERT INTO trains
+                (id, name, description, model, plugin_name, plugin_config, edge_controller_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (train_id, name, description, model, plugin_name, plugin_config, controller_id),
+            )
+            conn.commit()
+            logger.info(f"Added train: {name} ({train_id}) to controller {controller_id}")
+        except sqlite3.IntegrityError:
+            logger.exception(f"Failed to add train {train_id}")
+            raise
         finally:
             conn.close()
 

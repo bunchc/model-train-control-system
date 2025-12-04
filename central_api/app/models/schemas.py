@@ -40,6 +40,20 @@ class Train(BaseModel):
     description: Optional[str] = None
     model: Optional[str] = None
     plugin: TrainPlugin
+    invert_directions: bool = False
+    status: Optional["TrainStatus"] = None
+
+
+class TrainUpdateRequest(BaseModel):
+    """Request model for updating train configuration.
+
+    All fields are optional to support partial updates.
+    Only provided fields will be updated in the database.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    invert_directions: Optional[bool] = None
 
 
 class EdgeController(BaseModel):
@@ -68,3 +82,7 @@ class TrainStatus(BaseModel):
     voltage: float = Field(..., ge=0)
     current: float = Field(..., ge=0)
     position: str = Field(..., min_length=1)
+
+
+# Resolve forward references after all models are defined
+Train.model_rebuild()

@@ -17,6 +17,7 @@ Or in simulation mode:
     LOCAL_DEV=true python app/main.py
 """
 
+import asyncio
 import logging
 import os
 import sys
@@ -40,7 +41,7 @@ LOCAL_DEV = os.getenv("LOCAL_DEV", "false").lower() == "true"
 # Hardware controllers - only import if not in local-dev mode
 if not LOCAL_DEV:
     try:
-        from .dc_motor_hat import DCMotorHatController
+        from .dc_motor_hat import DCMotorHatController  # noqa: F401
 
         HARDWARE_AVAILABLE = True
     except ImportError:
@@ -52,29 +53,31 @@ else:
 
 
 class DCMotorSimulator:
-    """Simulator for DC motor when hardware is unavailable.
+    """Simulation implementation of DC motor controller for testing/development.
 
-    This class provides a drop-in replacement for DCMotorHatController
-    when running in LOCAL_DEV mode or when hardware modules are not available.
-    All methods log their calls but perform no actual hardware operations.
-
-    This enables:
-    - Development without physical Raspberry Pi hardware
-    - Testing on non-ARM platforms (x86, macOS, etc.)
-    - CI/CD pipeline execution without hardware dependencies
+    This class provides the same interface as DCMotorHatController but logs
+    all operations instead of controlling actual hardware.
     """
 
-    def start(self, speed: int = 50, direction: int = 1) -> None:
+    def __init__(self) -> None:
+        """Initialize the simulator."""
+        self.current_speed = 0
+        self.current_direction = 1  # 1=forward, 0=reverse
+
+    def start(self, speed: int, direction: int) -> None:
         """Simulate starting the motor.
 
         Args:
             speed: Motor speed (0-100)
             direction: Motor direction (1=forward, 0=reverse)
         """
+        self.current_speed = speed
+        self.current_direction = direction
         logger.info(f"[SIMULATION] start(speed={speed}, direction={direction}) called")
 
     def stop(self) -> None:
         """Simulate stopping the motor."""
+        self.current_speed = 0
         logger.info("[SIMULATION] stop() called")
 
     def set_speed(self, speed: int) -> None:
@@ -83,6 +86,7 @@ class DCMotorSimulator:
         Args:
             speed: Motor speed (0-100)
         """
+        self.current_speed = speed
         logger.info(f"[SIMULATION] set_speed({speed}) called")
 
     def set_direction(self, direction: int) -> None:
@@ -91,7 +95,24 @@ class DCMotorSimulator:
         Args:
             direction: Motor direction (1=forward, 0=reverse)
         """
+        self.current_direction = direction
         logger.info(f"[SIMULATION] set_direction({direction}) called")
+
+    def get_speed(self) -> int:
+        """Get the current motor speed.
+
+        Returns:
+            Current motor speed (0-100)
+        """
+        return self.current_speed
+
+    def get_direction(self) -> int:
+        """Get the current motor direction.
+
+        Returns:
+            Current motor direction (1=forward, 0=reverse)
+        """
+        return self.current_direction
 
 
 class EdgeControllerApp:
@@ -128,9 +149,11 @@ class EdgeControllerApp:
         self.mqtt_client: Optional[MQTTClient] = None
         self.hardware_controller: Optional[Any] = None
         self.train_id: Optional[str] = None
+        self.speed_task: Optional[asyncio.Task] = None  # Track speed ramping task
+        self.main_loop: Optional[asyncio.AbstractEventLoop] = None  # Store main event loop
 
-    def initialize(self) -> bool:
-        """Initialize application components.
+    def initialize(self) -> bool:  # noqa: PLR0915
+        """Initialize edge controller components.
 
         Returns:
             True if initialization successful, False otherwise
@@ -143,8 +166,13 @@ class EdgeControllerApp:
 
         # Initialize configuration
         try:
-            # Locate config files relative to this script
-            config_path = Path(__file__).parent / "edge-controller.conf"
+            # Check for config file in mounted location first, then fall back to app directory
+            mounted_config = Path("/app/edge-controller.conf")
+            if mounted_config.exists():
+                config_path = mounted_config
+            else:
+                config_path = Path(__file__).parent / "edge-controller.conf"
+
             cached_config_path = Path(__file__).parent / "edge-controller.yaml"
 
             logger.info(f"Loading service config from: {config_path}")
@@ -197,14 +225,21 @@ class EdgeControllerApp:
             try:
                 from .dc_motor_hat import DCMotorHatController
 
-                self.hardware_controller = DCMotorHatController()
-                logger.info("✓ Hardware controller initialized (real hardware)")
+                # Get motor port from environment (default to 1 for M1)
+                motor_port = int(os.getenv("MOTOR_PORT", "1"))
+                logger.info(f"Motor port configured: M{motor_port}")
+
+                self.hardware_controller = DCMotorHatController(motor_num=motor_port)
+                logger.info(f"✓ Hardware controller initialized (DC Motor M{motor_port})")
             except Exception:
                 logger.exception("✗ Failed to initialize hardware controller")
                 return False
         else:
             self.hardware_controller = DCMotorSimulator()
             logger.info("✓ Hardware controller initialized (SIMULATION MODE)")
+
+        # Initialize current speed tracking from hardware state
+        self.current_speed = self.hardware_controller.get_speed()
 
         # Initialize MQTT client
         logger.info("Setting up MQTT client...")
@@ -275,26 +310,195 @@ class EdgeControllerApp:
         logger.info(f">>> COMMAND RECEIVED: {command}")
         logger.info("=" * 40)
 
-        # Execute command on hardware
+        action = command.get("action")
+
+        # For setSpeed and setDirection commands, use async ramping for safety
+        if action in ("setSpeed", "setDirection") or ("speed" in command and action is None):
+            # Cancel any existing speed ramp
+            if self.speed_task and not self.speed_task.done():
+                self.speed_task.cancel()
+            # Schedule async task for speed/direction ramping
+            try:
+                # Use the stored main event loop reference
+                if self.main_loop:
+                    if action == "setDirection":
+                        future = asyncio.run_coroutine_threadsafe(
+                            self._handle_direction_command(command), self.main_loop
+                        )
+                    else:
+                        future = asyncio.run_coroutine_threadsafe(
+                            self._handle_speed_command(command), self.main_loop
+                        )
+                    self.speed_task = future
+                else:
+                    logger.warning("Main event loop not available, using synchronous execution")
+                    self._execute_hardware_command(command)
+            except RuntimeError:
+                logger.exception("Failed to schedule async command")
+                # Fall back to synchronous execution
+                self._execute_hardware_command(command)
+            return
+
+        # Execute other commands on hardware (start, stop, emergencyStop)
         self._execute_hardware_command(command)
 
-    def _execute_hardware_command(self, command: dict[str, Any]) -> None:
+    async def _handle_speed_command(self, command: dict) -> None:
+        """Handle speed command with gradual ramping.
+
+        Uses the same speed ramping logic as the HTTP controller
+        but updates train_status and publishes status via MQTT.
+
+        Safety Feature: If direction change is requested while motor is running,
+        gradually ramp down to 0, change direction, then ramp up to target speed.
+
+        Args:
+            command: Full command dictionary with 'speed' and optional 'direction'
+        """
+        try:
+            target_speed = command.get("speed", 50)
+            logger.info(f"Starting speed ramp to {target_speed}")
+
+            # Handle direction change if specified
+            if "direction" in command:
+
+                def normalize_direction(direction_param):
+                    """Convert direction parameter to integer (1=forward, 0=reverse)."""
+                    if direction_param is None:
+                        return 1  # Default to forward
+                    if isinstance(direction_param, str):
+                        return 1 if direction_param.upper() == "FORWARD" else 0
+                    return int(direction_param)  # Pass through integers
+
+                direction = normalize_direction(command.get("direction"))
+                current_direction = self.hardware_controller.get_direction()
+                current_speed = self.hardware_controller.get_speed()
+
+                # Safety pattern: if direction is changing and motor is running,
+                # gradually ramp down first, then change direction
+                if current_speed > 0 and direction != current_direction:
+                    logger.info(
+                        f"Direction change detected while motor running (speed={current_speed}). "
+                        f"Gradually ramping down for safety..."
+                    )
+                    # Ramp down to 0
+                    await self._ramp_speed(current_speed, 0)
+                    logger.info("Motor stopped. Changing direction...")
+
+                logger.info(f"Setting direction to {'forward' if direction == 1 else 'reverse'}")
+                self.hardware_controller.set_direction(direction)
+
+            # Get current speed from local state (may have been updated by ramp down)
+            current_speed = self.current_speed
+            speed_diff = target_speed - current_speed
+
+            if speed_diff == 0:
+                logger.info(f"Speed already at target: {target_speed}")
+                return
+
+            # Ramp to target speed
+            await self._ramp_speed(current_speed, target_speed)
+            logger.info(f"Speed ramp completed: final speed = {target_speed}")
+
+        except Exception:
+            logger.exception("Error in speed ramp command")
+            # Publish current status even if there was an error
+            self._publish_current_status()
+
+    async def _ramp_speed(self, from_speed: int, to_speed: int) -> None:
+        """Gradually ramp speed from one value to another.
+
+        Args:
+            from_speed: Starting speed (0-100)
+            to_speed: Target speed (0-100)
+        """
+        speed_diff = to_speed - from_speed
+        if speed_diff == 0:
+            return
+
+        # Calculate timing: 3 seconds total, steps of 1 speed unit
+        total_steps = abs(speed_diff)
+        step_delay = 3.0 / total_steps if total_steps > 0 else 0
+        step_direction = 1 if speed_diff > 0 else -1
+
+        logger.info(f"Speed ramp: {from_speed} -> {to_speed} over 3 seconds ({total_steps} steps)")
+
+        # Ramp through intermediate speeds
+        for step in range(1, total_steps + 1):
+            new_speed = from_speed + (step * step_direction)
+            self.current_speed = new_speed  # Update local state
+
+            # Update hardware controller
+            self.hardware_controller.set_speed(new_speed)
+
+            # Publish intermediate status via MQTT
+            logger.debug(f"Ramping speed to {new_speed}")
+            self._publish_current_status()
+
+            # Wait before next step (except on final step)
+            if step < total_steps:
+                await asyncio.sleep(step_delay)
+
+    async def _handle_direction_command(self, command: dict) -> None:
+        """Handle direction change command with gradual ramping for safety.
+
+        If the motor is running, gradually ramps down to 0 before changing
+        direction to protect the motor and gears.
+
+        Args:
+            command: Command dictionary with 'direction' key
+        """
+        try:
+
+            def normalize_direction(direction_param):
+                """Convert direction parameter to integer (1=forward, 0=reverse)."""
+                if direction_param is None:
+                    return 1  # Default to forward
+                if isinstance(direction_param, str):
+                    return 1 if direction_param.upper() == "FORWARD" else 0
+                return int(direction_param)  # Pass through integers
+
+            direction = normalize_direction(command.get("direction"))
+            current_direction = self.hardware_controller.get_direction()
+            current_speed = self.hardware_controller.get_speed()
+
+            # Safety pattern: if direction is changing and motor is running,
+            # gradually ramp down first
+            if current_speed > 0 and direction != current_direction:
+                logger.info(
+                    f"Direction change detected while motor running (speed={current_speed}). "
+                    f"Gradually ramping down for safety..."
+                )
+                # Ramp down to 0
+                await self._ramp_speed(current_speed, 0)
+                logger.info("Motor stopped. Changing direction...")
+
+            logger.info(f"Setting direction to {'forward' if direction == 1 else 'reverse'}")
+            self.hardware_controller.set_direction(direction)
+            self._publish_current_status()
+            logger.info(f"✓ Direction set to {'forward' if direction == 1 else 'reverse'}")
+
+        except Exception:
+            logger.exception("Error in direction command")
+            self._publish_current_status()
+
+    def _execute_hardware_command(self, command: dict[str, Any]) -> None:  # noqa: PLR0912, PLR0915
         """Execute command on hardware controller.
 
         This method translates MQTT command payloads into hardware controller
         method calls. It implements the command routing logic and error handling.
 
         Supported Commands:
-            - {'action': 'start', 'speed': 50, 'direction': 1}: Start motor at specified speed and direction
+            - {'action': 'start', 'speed': 50, 'direction': 'FORWARD'}: Start motor at specified speed and direction
             - {'action': 'stop'}: Stop motor immediately
-            - {'action': 'setSpeed', 'speed': 75}: Change motor speed (maintains current direction)
-            - {'action': 'setDirection', 'direction': 0}: Change motor direction (1=forward, 0=reverse)
+            - {'action': 'emergencyStop'}: Emergency stop with warning logging
+            - {'action': 'setSpeed', 'speed': 75, 'direction': 'BACKWARD'}: Change motor speed and direction (gradual ramping)
+            - {'action': 'setDirection', 'direction': 'FORWARD'}: Change motor direction
 
         Args:
             command: Command dictionary containing:
-                - action (str): Required. Command type (start|stop|setSpeed|setDirection)
+                - action (str): Required. Command type (start|stop|emergencyStop|setSpeed|setDirection)
                 - speed (int): Optional. Motor speed 0-100 (default: 50)
-                - direction (int): Optional. Motor direction 1=forward, 0=reverse (default: 1)
+                - direction (str|int): Optional. Motor direction "FORWARD"/"BACKWARD" or 1/0 (default: "FORWARD")
 
         Error Handling:
             - Unknown actions are logged as warnings and ignored
@@ -306,7 +510,9 @@ class EdgeControllerApp:
             - Logs all command executions and errors
 
         Example:
-            >>> self._execute_hardware_command({"action": "start", "speed": 60})
+            >>> self._execute_hardware_command(
+            ...     {"action": "start", "speed": 60, "direction": "BACKWARD"}
+            ... )
             # Logs: "Started motor at speed 60"
 
         Note:
@@ -316,42 +522,124 @@ class EdgeControllerApp:
         # Extract action from command payload
         action = command.get("action")
 
+        # Handle speed-only commands (backwards compatibility)
+        if action is None and "speed" in command:
+            action = "setSpeed"
+
+        # Helper function to normalize direction parameter
+        def normalize_direction(direction_param: Any) -> int:
+            """Convert direction parameter to integer (1=forward, 0=reverse).
+
+            Accepts:
+                - String: "FORWARD" or "BACKWARD"
+                - Integer: 1 (forward) or 0 (reverse)
+                - None: defaults to 1 (forward)
+            """
+            if direction_param is None:
+                return 1  # Default to forward
+            if isinstance(direction_param, str):
+                return 1 if direction_param.upper() == "FORWARD" else 0
+            return int(direction_param)  # Pass through integers
+
         # Execute hardware action with exception isolation
         # Each exception is caught to prevent MQTT callback failures
         try:
             # Command: start motor at specified speed and direction
             if action == "start":
                 speed = command.get("speed", 50)  # Default to 50% if not specified
-                direction = command.get("direction", 1)  # Default to forward if not specified
+                direction = normalize_direction(command.get("direction"))
                 logger.info(
                     f"Executing START command (speed={speed}, direction={'forward' if direction == 1 else 'reverse'})..."
                 )
+                self.current_speed = speed  # Update local state
                 self.hardware_controller.start(speed, direction)
                 logger.info(
                     f"✓ Motor started at speed {speed} ({'forward' if direction == 1 else 'reverse'})"
                 )
+                # Publish status update after command execution
+                self._publish_current_status()
 
-            # Command: stop motor immediately
+            # Command: stop motor (regular stop)
             elif action == "stop":
                 logger.info("Executing STOP command...")
+                self.current_speed = 0  # Update local state
                 self.hardware_controller.stop()
                 logger.info("✓ Motor stopped")
+                # Publish status update after command execution
+                self._publish_current_status()
 
-            # Command: change speed without stopping
+            # Command: emergency stop - immediate power cut
+            elif action == "emergencyStop":
+                logger.warning("Executing EMERGENCY STOP command...")
+                self.current_speed = 0  # Update local state
+                self.hardware_controller.stop()  # Immediate stop, no ramping
+                logger.warning("⚠️ EMERGENCY STOP: Motor stopped immediately")
+                # Publish status update after command execution
+                self._publish_current_status()
+
+            # Command: change speed (sync fallback - prefer async handler for gradual ramping)
             elif action == "setSpeed":
                 speed = command.get("speed", 50)  # Default to 50% if not specified
-                logger.info(f"Executing SET_SPEED command (speed={speed})...")
-                self.hardware_controller.set_speed(speed)
-                logger.info(f"✓ Speed set to {speed}")
+                # If direction is provided with setSpeed, change direction first
+                if "direction" in command:
+                    direction = normalize_direction(command.get("direction"))
+                    current_direction = self.hardware_controller.get_direction()
+                    current_speed = self.hardware_controller.get_speed()
 
-            # Command: change direction
+                    # Safety pattern: stop before reversing if motor is running
+                    # Note: This is sync fallback - uses immediate stop instead of gradual ramp
+                    if current_speed > 0 and direction != current_direction:
+                        logger.warning(
+                            f"Direction change while running (sync fallback - immediate stop). "
+                            f"speed={current_speed}"
+                        )
+                        self.hardware_controller.stop()
+                        self.current_speed = 0
+                        self._publish_current_status()  # Notify of stop
+                        time.sleep(0.15)  # Brief delay for motor to decelerate
+
+                    logger.info(
+                        f"Executing SET_SPEED command with direction change (speed={speed}, direction={'forward' if direction == 1 else 'reverse'})..."
+                    )
+                    self.current_speed = speed  # Update local state
+                    self.hardware_controller.set_direction(direction)
+                    self.hardware_controller.set_speed(speed)
+                    logger.info(
+                        f"✓ Speed set to {speed} ({'forward' if direction == 1 else 'reverse'})"
+                    )
+                else:
+                    logger.info(f"Executing SET_SPEED command (speed={speed})...")
+                    self.current_speed = speed  # Update local state
+                    self.hardware_controller.set_speed(speed)
+                    logger.info(f"✓ Speed set to {speed}")
+                # Publish status update after command execution
+                self._publish_current_status()
+
+            # Command: change direction (sync fallback - prefer async handler for gradual ramping)
             elif action == "setDirection":
-                direction = command.get("direction", 1)  # Default to forward if not specified
+                direction = normalize_direction(command.get("direction"))
+                current_direction = self.hardware_controller.get_direction()
+                current_speed = self.hardware_controller.get_speed()
+
+                # Safety pattern: stop before reversing if motor is running
+                # Note: This is sync fallback - uses immediate stop instead of gradual ramp
+                if current_speed > 0 and direction != current_direction:
+                    logger.warning(
+                        f"Direction change while running (sync fallback - immediate stop). "
+                        f"speed={current_speed}"
+                    )
+                    self.hardware_controller.stop()
+                    self.current_speed = 0
+                    self._publish_current_status()  # Notify of stop
+                    time.sleep(0.15)  # Brief delay for motor to decelerate
+
                 logger.info(
                     f"Executing SET_DIRECTION command (direction={'forward' if direction == 1 else 'reverse'})..."
                 )
                 self.hardware_controller.set_direction(direction)
                 logger.info(f"✓ Direction set to {'forward' if direction == 1 else 'reverse'}")
+                # Publish status update after command execution
+                self._publish_current_status()
 
             # Unknown action - log warning but don't fail
             # This allows for future command types without code changes
@@ -363,16 +651,62 @@ class EdgeControllerApp:
             # Log error but allow controller to continue processing commands
             logger.exception("Hardware command execution failed")
 
-    def run(self) -> None:
-        """Run the main application loop."""
+    def _publish_current_status(self) -> None:
+        """Publish current train status to MQTT.
+
+        Collects current state from hardware controller and publishes
+        to the status topic. This is called after command execution to
+        notify subscribers of state changes.
+
+        Status includes:
+            - train_id: Train identifier
+            - speed: Current motor speed (0-100)
+            - direction: Current direction (FORWARD/BACKWARD)
+            - timestamp: ISO 8601 timestamp
+
+        Note:
+            Errors during status publishing are caught and logged to prevent
+            command execution failures.
+        """
+        try:
+            import datetime
+
+            # Build status payload from current hardware state
+            status = {
+                "train_id": self.train_id,
+                "speed": self.current_speed,
+                "direction": "FORWARD"
+                if self.hardware_controller.get_direction() == 1
+                else "BACKWARD",
+                "timestamp": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+            }
+
+            # Publish to MQTT broker
+            self.mqtt_client.publish_status(status)
+            logger.info(f"✓ Published status: {status}")
+
+        except Exception:
+            # Log error but don't fail - status publishing is best-effort
+            logger.exception("Failed to publish status update")
+
+    async def run_async(self) -> None:
+        """Run the main application loop with async support."""
+        # Store reference to the main event loop for MQTT callbacks
+        self.main_loop = asyncio.get_running_loop()
+
         try:
             logger.info("Edge controller running. Press Ctrl+C to stop.")
             while True:
-                time.sleep(1)
+                await asyncio.sleep(1)
         except KeyboardInterrupt:
             logger.info("Shutting down due to keyboard interrupt")
         finally:
             self.shutdown()
+
+    def run(self) -> None:
+        """Run the main application loop."""
+        # Run the async event loop
+        asyncio.run(self.run_async())
 
     def shutdown(self) -> None:
         """Cleanup and shutdown application."""

@@ -28,19 +28,24 @@ export interface Train {
   description?: string | null;
   model?: string | null;
   plugin: TrainPlugin;
+  invert_directions?: boolean;
+}
+
+export interface TrainUpdateRequest {
+  name?: string;
+  description?: string | null;
+  invert_directions?: boolean;
 }
 
 export interface TrainStatus {
   train_id: string;
   speed: number;
-  voltage: number;
-  current: number;
-  position: string;
+  direction: 'FORWARD' | 'BACKWARD';
   timestamp?: string;
 }
 
 export interface TrainCommand {
-  action: 'setSpeed' | 'start' | 'stop' | 'forward' | 'reverse';
+  action: 'setSpeed' | 'start' | 'stop' | 'forward' | 'reverse' | 'emergencyStop';
   speed?: number | null;
   direction?: 'forward' | 'reverse' | null;
 }

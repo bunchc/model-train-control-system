@@ -104,23 +104,7 @@ def get_full_config():
     return _get_config().get_full_config()
 
 
-# New endpoints for trains
-@router.get("/trains", response_model=list[Train])
-def list_all_trains():
-    """List all trains in the system.
-
-    Returns:
-        List of Train configuration objects
-
-    Example:
-        ```bash
-        curl http://localhost:8000/api/trains
-        ```
-    """
-    logger.info("GET /trains called")
-    return _get_config().get_trains()
-
-
+# New endpoints for trains (moved to trains.py)
 @router.get("/config/trains", response_model=list[Train])
 def list_all_trains_config():
     """List all trains in the system (config alias).
@@ -323,6 +307,189 @@ def register_controller(
     else:
         logger.info(f"Registered new controller: name={name}, uuid={new_uuid}, address={address}")
         return {"uuid": new_uuid, "name": name, "address": address, "status": "registered"}
+
+
+@router.post("/controllers/{controller_uuid}/trains", response_model=Train, status_code=201)
+def register_train_for_controller(
+    controller_uuid: str,
+    train_id: str = Body(..., description="Unique UUID for the train"),
+    name: str = Body(..., description="Human-readable train name"),
+    description: str = Body("", description="Optional train description"),
+    model: str = Body("", description="Train model name/number"),
+    plugin: dict = Body(..., description="Plugin configuration"),
+    reassign: bool = Body(False, description="If true, reassign train from existing controller"),
+):
+    r"""Register a new train for a specific edge controller.
+
+    This endpoint is called by edge controllers during initialization to register
+    the trains they manage. The controller UUID must exist in the system.
+
+    Args:
+        controller_uuid: UUID of the edge controller managing this train
+        train_id: Unique identifier for the train
+        name: Display name for the train
+        description: Optional description
+        model: Optional model information
+        plugin: Plugin configuration dict with 'name' and 'config' keys
+        reassign: If true, reassign train from existing controller to this one
+
+    Returns:
+        Train object representing the registered train
+
+    Raises:
+        HTTPException: 400 if controller not found, 409 if train already exists
+
+    Example:
+        ```bash
+        curl -X POST http://localhost:8000/api/controllers/{uuid}/trains \\
+          -H "Content-Type: application/json" \\
+          -d '{
+            "train_id": "abc-123",
+            "name": "Express Line",
+            "model": "DC Motor",
+            "plugin": {"name": "dc_motor", "config": {"motor_port": 1}},
+            "reassign": false
+          }'
+        ```
+    """
+    logger.info(
+        f"POST /controllers/{controller_uuid}/trains called: "
+        f"train_id={train_id}, name={name}, reassign={reassign}"
+    )
+
+    try:
+        train = _get_config().add_train(
+            controller_uuid=controller_uuid,
+            train_id=train_id,
+            name=name,
+            description=description,
+            model=model,
+            plugin_name=plugin.get("name", "dc_motor"),
+            plugin_config=plugin.get("config", {}),
+            reassign=reassign,
+        )
+    except Exception as e:
+        if "not found" in str(e).lower():
+            msg = f"Controller {controller_uuid} not found"
+            raise HTTPException(status_code=400, detail=msg) from e
+        if "UNIQUE constraint" in str(e) or "already exists" in str(e).lower():
+            # Check if train exists and we should return existing controller
+            if not reassign:
+                existing_controller = _get_config().get_controller_for_train(train_id)
+                if existing_controller:
+                    logger.info(
+                        f"Train {train_id} exists, returning existing controller: "
+                        f"{existing_controller.id}"
+                    )
+                    # Get the train data directly from repository
+                    train_data = _get_config().repository.get_train(train_id)
+                    if train_data:
+                        # Convert to Train model
+                        import json
+
+                        from app.models.schemas import Train, TrainPlugin
+
+                        plugin_config = (
+                            json.loads(train_data["plugin_config"])
+                            if train_data["plugin_config"]
+                            else {}
+                        )
+                        return Train(
+                            id=train_data["id"],
+                            name=train_data["name"],
+                            description=train_data.get("description", ""),
+                            model=train_data.get("model", ""),
+                            plugin=TrainPlugin(
+                                name=train_data["plugin_name"], config=plugin_config
+                            ),
+                        )
+                    # If not found in repository, fallback to 409
+                    logger.warning(f"Train {train_id} not found in repository")
+
+            msg = f"Train {train_id} already exists"
+            raise HTTPException(status_code=409, detail=msg) from e
+        logger.exception("Failed to register train")
+        raise HTTPException(status_code=500, detail=f"Failed to register train: {e!s}") from e
+    else:
+        logger.info(f"Registered train {name} ({train_id}) for controller {controller_uuid}")
+        return train
+
+
+@router.post("/trains", response_model=Train, status_code=201)
+def register_train(
+    train_id: str = Body(...),
+    name: str = Body(...),
+    controller_uuid: str = Body(..., description="UUID of managing controller"),
+    description: str = Body(""),
+    model: str = Body(""),
+    plugin: dict = Body(...),
+):
+    r"""Register a new train (convenience endpoint for manual/admin use).
+
+    This is a convenience endpoint that accepts controller_uuid in the body.
+    Edge controllers should prefer POST /api/controllers/{uuid}/trains.
+
+    Args:
+        train_id: Unique identifier for the train
+        name: Display name
+        controller_uuid: UUID of the managing controller
+        description: Optional description
+        model: Optional model information
+        plugin: Plugin configuration
+
+    Returns:
+        Train object
+
+    Example:
+        ```bash
+        curl -X POST http://localhost:8000/api/trains \\
+          -d '{"train_id": "...", "name": "...", "controller_uuid": "...", "plugin": {...}}'
+        ```
+    """
+    logger.info(f"POST /trains called: train_id={train_id}, controller={controller_uuid}")
+    return register_train_for_controller(
+        controller_uuid=controller_uuid,
+        train_id=train_id,
+        name=name,
+        description=description,
+        model=model,
+        plugin=plugin,
+    )
+
+
+@router.post("/config/trains", response_model=Train, status_code=201)
+def register_train_config_alias(
+    train_id: str = Body(...),
+    name: str = Body(...),
+    controller_uuid: str = Body(...),
+    description: str = Body(""),
+    model: str = Body(""),
+    plugin: dict = Body(...),  # noqa: B008
+):
+    """Register a new train (OpenAPI consistency alias).
+
+    Alias for POST /api/trains to maintain consistency with GET /api/config/trains.
+
+    Args:
+        train_id: Unique identifier
+        name: Display name
+        controller_uuid: Managing controller UUID
+        description: Optional description
+        model: Optional model
+        plugin: Plugin configuration
+
+    Returns:
+        Train object
+    """
+    logger.info(f"POST /config/trains called (alias): train_id={train_id}")
+    return register_train(
+        train_id=train_id,
+        name=name,
+        controller_uuid=controller_uuid,
+        description=description,
+        model=model,
+        plugin=plugin,
+    )
 
 
 @router.get("/controllers/{uuid}/config")

@@ -1,0 +1,169 @@
+---
+# Deploy Multiple Edge Controllers to Single Raspberry Pi
+#
+# This playbook deploys multiple edge-controller containers to a single RPi,
+# one container per motor (M1, M2, M3, M4).
+#
+# Usage:
+#   ansible-playbook playbooks/deploy_edge_multi_motor.yml --ask-vault-pass
+#   ansible-playbook playbooks/deploy_edge_multi_motor.yml --limit rpi-train-01
+
+- name: Deploy Multi-Motor Edge Controllers
+  hosts: edge
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - ../secrets/vault_plain.yml
+
+  pre_tasks:
+    # ========================================================================
+    # Verify Dependencies
+    # ========================================================================
+
+    - name: Verify Docker is installed
+      command: docker --version
+      register: docker_check
+      failed_when: docker_check.rc != 0
+      changed_when: false
+
+    - name: Verify central API is reachable
+      uri:
+        url: "{{ central_api_url }}/api/ping"
+        timeout: 5
+      register: api_check
+      failed_when: api_check.status != 200
+      retries: 3
+      delay: 5
+
+    - name: Verify motors are defined
+      assert:
+        that:
+          - motors is defined
+          - motors | length > 0
+        fail_msg: "No motors defined for host {{ inventory_hostname }}"
+
+  tasks:
+    # ========================================================================
+    # Prepare Edge Environment
+    # ========================================================================
+
+    - name: Create base edge controller directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      loop:
+        - /opt/train-control/config
+        - /opt/train-control/logs
+        - /var/lib/train-control
+
+    # ========================================================================
+    # Log in to Docker Registry
+    # ========================================================================
+
+    - name: Log in to GHCR
+      docker_login:
+        registry: "{{ docker_registry }}"
+        username: "{{ docker_registry_username }}"
+        password: "{{ docker_registry_password }}"
+      when:
+        - docker_registry_username is defined
+        - not (build_edge_image | default(false))
+
+    # ========================================================================
+    # Pull Latest Image (once for all motors)
+    # ========================================================================
+
+    - name: Check if we should build locally
+      set_fact:
+        should_build: "{{ build_edge_image | default(false) }}"
+
+    - name: Copy edge controller source to RPi (if building)
+      synchronize:
+        src: "{{ playbook_dir }}/../../../edge-controllers/pi-template/"
+        dest: /tmp/edge-controller-build/
+        delete: yes
+        rsync_opts:
+          - "--exclude=__pycache__"
+          - "--exclude=*.pyc"
+          - "--exclude=.pytest_cache"
+          - "--exclude=htmlcov"
+      when: should_build | bool
+
+    - name: Build edge controller image locally
+      community.docker.docker_image:
+        name: edge-controller
+        tag: latest
+        source: build
+        build:
+          path: /tmp/edge-controller-build
+          dockerfile: Dockerfile
+        force_source: yes
+      when: should_build | bool
+      register: build_result
+
+    - name: Pull edge controller image from registry
+      docker_image:
+        name: "{{ edge_controller_image }}"
+        tag: "{{ edge_controller_tag }}"
+        source: pull
+        force_source: yes
+      when: not (should_build | bool)
+      register: pull_result
+
+    - name: Set image name fact
+      set_fact:
+        edge_image_full: "{{ 'edge-controller:latest' if (should_build | bool) else edge_controller_image + ':' + edge_controller_tag }}"
+
+    # ========================================================================
+    # Deploy Container for Each Motor
+    # ========================================================================
+
+    - name: Deploy edge controller containers (one per motor)
+      include_tasks: tasks/deploy_single_motor.yml
+      loop: "{{ motors }}"
+      loop_control:
+        loop_var: motor
+
+  post_tasks:
+    - name: Show all deployed containers
+      command: docker ps -f label=component=edge-controller
+      register: all_containers
+      changed_when: false
+
+    - name: Deployment summary
+      debug:
+        msg:
+          - "✅ Multi-motor edge controllers deployed successfully!"
+          - ""
+          - "Device: {{ inventory_hostname }} ({{ ansible_host }})"
+          - "Motors deployed: {{ motors | length }}"
+          - ""
+          - "Deployed Containers:"
+          - "{{ all_containers.stdout }}"
+          - ""
+          - "Next steps:"
+          - "1. Monitor logs: docker logs -f edge-controller-m1"
+          - "2. Check all containers: docker ps -f label=component=edge-controller"
+          - "3. Subscribe to MQTT status topics to verify communication"
+
+    - name: Save deployment metadata
+      copy:
+        dest: /opt/train-control/.deployed
+        content: |
+          Device: {{ inventory_hostname }}
+          Deployed: {{ ansible_date_time.iso8601 }}
+          Image: {{ edge_image_full }}
+          Motors: {{ motors | length }}
+          {% for motor in motors %}
+          - Motor M{{ motor.motor_port }}: {{ motor.train_name }} ({{ motor.train_id }})
+          {% endfor %}
+
+          MQTT Broker: {{ mqtt_broker }}:{{ mqtt_port }}
+          Central API: {{ central_api_url }}
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'

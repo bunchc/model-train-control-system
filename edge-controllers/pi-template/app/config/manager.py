@@ -26,6 +26,7 @@ Typical usage:
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -342,6 +343,49 @@ class ConfigManager:
         except APIRegistrationError as exc:
             # Registration failed - terminal error, cannot proceed without UUID
             raise ConfigurationError(f"Failed to register with central API: {exc}") from exc
+
+        # Step 1.5: Register train if environment variables are set
+        # This allows the controller to self-register trains from deployment config
+        train_id = os.getenv("TRAIN_ID")
+        train_name = os.getenv("TRAIN_NAME")
+        motor_port = os.getenv("MOTOR_PORT")
+        hardware_type = os.getenv("HARDWARE_TYPE", "dc_motor")
+
+        if train_id and train_name and motor_port:
+            logger.info(
+                f"Train configuration found in environment: id={train_id}, "
+                f"name={train_name}, motor_port={motor_port}"
+            )
+
+            # Build train registration payload
+            train_data = {
+                "train_id": train_id,
+                "name": train_name,
+                "plugin": {
+                    "name": "adafruit_dcmotor_hat",
+                    "config": {"motor_port": int(motor_port)},
+                },
+                "description": f"Train on motor port M{motor_port}",
+                "model": "DC Motor",
+            }
+
+            # Register train with Central API
+            try:
+                success = self.api_client.register_train(controller_uuid, train_data)
+                if success:
+                    logger.info(f"Successfully registered train {train_id} with Central API")
+            except APIRegistrationError as exc:
+                # Train registration failed - log warning but continue
+                # Controller can still operate if admin manually creates train later
+                logger.warning(
+                    f"Failed to register train {train_id}: {exc}. "
+                    "Controller will continue, but train may need manual registration."
+                )
+        else:
+            logger.info(
+                "No train configuration in environment variables. "
+                "Train must be registered manually via API."
+            )
 
         # Step 2: Try to download runtime config using new UUID
         # Admin may have pre-configured this controller, or it may return 404

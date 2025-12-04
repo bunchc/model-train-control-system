@@ -18,13 +18,16 @@ Open http://localhost:3000
 ### Step 1: System Requirements
 
 **Required:**
+
 - Node.js 18.x or higher
 - npm 9.x or higher (comes with Node.js)
 
 **Optional:**
+
 - yarn or pnpm (alternative package managers)
 
 **Verify installation:**
+
 ```bash
 node --version  # Should be v18.0.0 or higher
 npm --version   # Should be 9.0.0 or higher
@@ -38,6 +41,7 @@ npm install
 ```
 
 This installs:
+
 - React and React DOM
 - TypeScript
 - Vite build tool
@@ -47,6 +51,7 @@ This installs:
 - All other dependencies
 
 **Troubleshooting:**
+
 - If you see peer dependency warnings, they're usually safe to ignore
 - For `EACCES` errors, avoid using `sudo`. Fix npm permissions instead
 - Clear cache if installation fails: `npm cache clean --force`
@@ -68,7 +73,8 @@ VITE_TRAIN_STATUS_POLL_INTERVAL=2000
 VITE_TRAIN_LIST_POLL_INTERVAL=5000
 ```
 
-**Important:** 
+**Important:**
+
 - Ensure the Central API is running before starting the web UI
 - The API URL must include the protocol (`http://` or `https://`)
 - No trailing slash on the URL
@@ -80,6 +86,7 @@ npm run dev
 ```
 
 Output:
+
 ```
 VITE v5.1.6  ready in 423 ms
 
@@ -89,6 +96,7 @@ VITE v5.1.6  ready in 423 ms
 ```
 
 **Vite Dev Server Features:**
+
 - Hot Module Replacement (HMR) - Changes reflect instantly
 - Fast startup (~500ms)
 - Automatic browser refresh on file changes
@@ -130,6 +138,7 @@ npm run preview
 ### File Watching
 
 Vite watches these files automatically:
+
 - `src/**/*.{ts,tsx,js,jsx}`
 - `index.html`
 - `vite.config.ts`
@@ -141,11 +150,13 @@ Vite watches these files automatically:
 ### Hot Module Replacement (HMR)
 
 HMR updates the browser without full page reload:
+
 - ✅ Component state preserved
 - ✅ Fast feedback loop
 - ✅ CSS updates instantly
 
 If HMR breaks:
+
 1. Save file again
 2. Refresh browser
 3. Restart dev server
@@ -161,6 +172,7 @@ npm run build
 Output: `dist/` directory
 
 Build process:
+
 1. Type checking with TypeScript
 2. Bundling with Vite
 3. Minification
@@ -168,6 +180,7 @@ Build process:
 5. Asset optimization
 
 Build output:
+
 ```
 dist/
 ├── assets/
@@ -187,6 +200,7 @@ npm run preview
 Serves the `dist/` folder at http://localhost:4173
 
 **Use this to:**
+
 - Test production build locally
 - Verify bundle size
 - Check for build issues
@@ -194,16 +208,19 @@ Serves the `dist/` folder at http://localhost:4173
 ### Environment-Specific Builds
 
 **Staging:**
+
 ```bash
 VITE_API_BASE_URL=https://staging-api.example.com npm run build
 ```
 
 **Production:**
+
 ```bash
 VITE_API_BASE_URL=https://api.example.com npm run build
 ```
 
 Or use `.env.production`:
+
 ```env
 VITE_API_BASE_URL=https://api.example.com
 ```
@@ -217,6 +234,7 @@ Then: `npm run build` (automatically uses `.env.production`)
 The built app is static files that can be hosted anywhere:
 
 **Nginx:**
+
 ```nginx
 server {
     listen 80;
@@ -236,6 +254,7 @@ server {
 ```
 
 **Apache (.htaccess):**
+
 ```apache
 <IfModule mod_rewrite.c>
   RewriteEngine On
@@ -250,6 +269,7 @@ server {
 ### Docker Deployment
 
 **Dockerfile:**
+
 ```dockerfile
 # Build stage
 FROM node:18-alpine AS builder
@@ -268,6 +288,7 @@ CMD ["nginx", "-g", "daemon off;"]
 ```
 
 **Build and run:**
+
 ```bash
 docker build -t train-control-web .
 docker run -p 80:80 train-control-web
@@ -276,18 +297,21 @@ docker run -p 80:80 train-control-web
 ### Cloud Platforms
 
 **Netlify:**
+
 ```bash
 npm install -g netlify-cli
 netlify deploy --prod
 ```
 
 **Vercel:**
+
 ```bash
 npm install -g vercel
 vercel --prod
 ```
 
 **AWS S3 + CloudFront:**
+
 ```bash
 aws s3 sync dist/ s3://your-bucket-name
 aws cloudfront create-invalidation --distribution-id YOUR_DIST_ID --paths "/*"
@@ -300,6 +324,7 @@ aws cloudfront create-invalidation --distribution-id YOUR_DIST_ID --paths "/*"
 **Error:** `Port 3000 is already in use`
 
 **Solution:**
+
 ```bash
 # Change port
 npm run dev -- --port 3001
@@ -313,6 +338,7 @@ lsof -ti:3000 | xargs kill
 **Error:** `Cannot find module '@/components/...'`
 
 **Solution:**
+
 1. Verify path aliases in `tsconfig.json`
 2. Restart TypeScript server in VS Code (Cmd+Shift+P → "Restart TS Server")
 3. Restart dev server
@@ -322,6 +348,7 @@ lsof -ti:3000 | xargs kill
 **Error:** TypeScript compilation errors
 
 **Solution:**
+
 ```bash
 # Clear node_modules and reinstall
 rm -rf node_modules package-lock.json
@@ -336,6 +363,7 @@ npm install typescript@latest --save-dev
 **Error:** Build process crashes
 
 **Solution:**
+
 ```bash
 # Increase Node memory
 NODE_OPTIONS=--max-old-space-size=4096 npm run build
@@ -349,6 +377,7 @@ npx madge --circular src/
 **Error:** Tailwind classes not working
 
 **Solution:**
+
 1. Verify `globals.css` imports Tailwind directives
 2. Check `tailwind.config.js` content paths
 3. Restart dev server
@@ -359,6 +388,7 @@ npx madge --circular src/
 **Error:** `Failed to fetch trains` or CORS error
 
 **Solution:**
+
 1. Verify API is running: `curl http://localhost:8000/api/health`
 2. Check `VITE_API_BASE_URL` in `.env`
 3. Verify API CORS settings allow frontend origin
@@ -385,6 +415,7 @@ npx madge --circular src/
 ### VS Code Extensions
 
 Recommended extensions:
+
 - ESLint
 - Prettier
 - Tailwind CSS IntelliSense
@@ -394,6 +425,7 @@ Recommended extensions:
 ### Settings
 
 `.vscode/settings.json`:
+
 ```json
 {
   "editor.formatOnSave": true,
@@ -408,6 +440,7 @@ Recommended extensions:
 ## Next Steps
 
 After setup:
+
 1. Read `ARCHITECTURE.md` for system design
 2. Explore `src/components/` for examples
 3. Check `src/api/` for API integration patterns

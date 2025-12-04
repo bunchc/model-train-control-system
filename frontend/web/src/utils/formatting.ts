@@ -8,20 +8,6 @@ export const formatSpeed = (speed: number): string => {
 };
 
 /**
- * Format voltage value
- */
-export const formatVoltage = (voltage: number): string => {
-  return `${voltage.toFixed(2)}V`;
-};
-
-/**
- * Format current value
- */
-export const formatCurrent = (current: number): string => {
-  return `${current.toFixed(3)}A`;
-};
-
-/**
  * Format timestamp as relative time
  */
 export const formatRelativeTime = (timestamp: string | Date): string => {

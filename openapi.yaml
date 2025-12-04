@@ -64,6 +64,72 @@ paths:
                     config:
                       i2c_address: "0x61"
 
+    post:
+      summary: Register New Train
+      description: |
+        Register a new train in the system. This endpoint accepts controller_uuid
+        in the request body. Edge controllers should prefer using
+        POST /api/controllers/{controller_uuid}/trains for clearer ownership.
+      operationId: register_train
+      tags:
+        - trains
+      requestBody:
+        required: true
+        description: Train registration data
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - train_id
+                - name
+                - controller_uuid
+                - plugin
+              properties:
+                train_id:
+                  type: string
+                  description: Unique UUID for the train
+                  example: "9bf2f703-5ba2-5032-a749-01cce962bcf6"
+                name:
+                  type: string
+                  description: Human-readable train name
+                  example: "Express Line Engine"
+                controller_uuid:
+                  type: string
+                  description: UUID of the edge controller managing this train
+                  example: "58902c61-2b70-42fe-8542-6b5b404aa998"
+                description:
+                  type: string
+                  description: Optional train description
+                  example: "DC Motor on M1 port"
+                model:
+                  type: string
+                  description: Train model name/number
+                  example: "DC Motor"
+                plugin:
+                  type: object
+                  required:
+                    - name
+                  properties:
+                    name:
+                      type: string
+                      example: "dc_motor"
+                    config:
+                      type: object
+                      example:
+                        motor_port: 1
+      responses:
+        '201':
+          description: Train registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Train'
+        '400':
+          description: Controller not found
+        '409':
+          description: Train ID already exists
+
   /api/trains/{train_id}/command:
     post:
       summary: Send Command to Train
@@ -303,6 +369,129 @@ paths:
                   detail:
                     type: string
                     example: "Edge controller not found"
+
+  /api/controllers/{controller_uuid}/trains:
+    post:
+      summary: Register Train for Controller
+      description: |
+        Register a new train managed by a specific edge controller.
+        This is the preferred endpoint for edge controllers to self-register
+        trains during initialization. The controller UUID must already exist.
+      operationId: register_train_for_controller
+      tags:
+        - controllers
+        - trains
+      parameters:
+        - name: controller_uuid
+          in: path
+          required: true
+          description: UUID of the edge controller
+          schema:
+            type: string
+          example: "58902c61-2b70-42fe-8542-6b5b404aa998"
+      requestBody:
+        required: true
+        description: Train registration data
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - train_id
+                - name
+                - plugin
+              properties:
+                train_id:
+                  type: string
+                  description: Unique UUID for the train
+                  example: "9bf2f703-5ba2-5032-a749-01cce962bcf6"
+                name:
+                  type: string
+                  description: Human-readable train name
+                  example: "Express Line Engine"
+                description:
+                  type: string
+                  description: Optional train description
+                  example: "DC Motor on M1 port"
+                model:
+                  type: string
+                  description: Train model name/number
+                  example: "DC Motor"
+                plugin:
+                  type: object
+                  required:
+                    - name
+                  properties:
+                    name:
+                      type: string
+                      description: Plugin name (dc_motor, stepper_motor, etc)
+                      example: "dc_motor"
+                    config:
+                      type: object
+                      description: Plugin-specific configuration
+                      example:
+                        motor_port: 1
+      responses:
+        '201':
+          description: Train registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Train'
+        '400':
+          description: Controller not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: "Controller 58902c61-2b70-42fe-8542-6b5b404aa998 not found"
+        '409':
+          description: Train already exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: "Train 9bf2f703-5ba2-5032-a749-01cce962bcf6 already exists"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: "Failed to register train: Database error"
+
+  /api/config/trains:
+    post:
+      summary: Register Train (OpenAPI Alias)
+      description: |
+        Alias for POST /api/trains to maintain consistency with
+        GET /api/config/trains endpoint naming.
+      operationId: register_train_config_alias
+      tags:
+        - configuration
+        - trains
+      requestBody:
+        $ref: '#/components/requestBodies/TrainRegistration'
+      responses:
+        '201':
+          description: Train registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Train'
+        '400':
+          description: Controller not found
+        '409':
+          description: Train already exists
 
   # ============================================================================
   # Internal Endpoints (used by edge controllers)

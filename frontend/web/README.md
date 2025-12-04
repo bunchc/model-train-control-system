@@ -5,6 +5,7 @@ A modern, accessible React web application for real-time model train control and
 ## Features
 
 - 🚂 **Real-time Train Control** - Control speed, direction, and send commands to trains
+- ⚙️ **Train Configuration** - Edit train names, descriptions, and motor direction settings
 - 📊 **Live Telemetry** - Monitor voltage, current, speed, and position in real-time
 - 📱 **Responsive Design** - Mobile-first design that works on all devices
 - 🌙 **Dark Mode** - System-aware theme switching (light/dark/system)
@@ -93,11 +94,26 @@ npm run preview
 
 The web UI integrates with the Model Train Control System API via:
 
-1. **REST API** - For train commands and configuration
+1. **REST API** - For train commands and configuration:
+   - `POST /api/trains/{id}/command` - Send control commands (speed, direction)
+   - `PUT /api/trains/{id}` - Update train configuration (name, description, motor settings)
+   - `GET /api/trains` - List all trains with status
+   - `GET /api/controllers` - List all edge controllers
+
 2. **Auto-polling** - React Query automatically refreshes data:
    - Train status: every 2 seconds
    - Train list: every 5 seconds
    - Controllers: every 10 seconds
+
+### Editing Train Configuration
+
+Users can edit train settings via the gear icon in the train detail view:
+
+- **Name:** 1-100 characters, required
+- **Description:** 0-500 characters, optional
+- **Invert Directions:** Toggle for DC motor HAT (swaps forward/reverse)
+
+Changes are validated client-side and saved immediately with toast notifications.
 
 ## Accessibility
 

@@ -1,201 +1,160 @@
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.env
-.env*
-*.egg-info/
-*.sqlite3
-*.db
+# =============================================================================
+# Model Train Control System - .gitignore
+# =============================================================================
 
-# Python tooling caches
-.ruff_cache/
-.mypy_cache/
-.pytest_cache/
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+htmlcov/
 .tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
 .hypothesis/
-# Node.js
+.pytest_cache/
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+# Ruff
+.ruff_cache/
+
+# =============================================================================
+# Node.js / Frontend
+# =============================================================================
 node_modules/
-*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-# package-lock.json - REMOVED: Required for npm ci in CI/CD
-yarn.lock
-pnpm-lock.yaml
+.npm
+.eslintcache
+.node_repl_history
 
-# Docker
-*.pid
-*.sock
-*.pid.lock
+# Build outputs
+frontend/web/dist/
 
-# VS Code
+# Playwright
+frontend/web/playwright-report/
+frontend/web/test-results/
+playwright/.cache/
+
+# =============================================================================
+# IDEs and Editors
+# =============================================================================
+.idea/
 .vscode/
-.history/
-
-# OS/Editor
-.DS_Store
-Thumbs.db
 *.swp
 *.swo
-*.bak
-*.tmp
-
-# Build/Dist
-/dist/
-/build/
-/frontend/web/build/
-/frontend/web/dist/
-
-# Coverage
-.coverage
-.coverage.*
-htmlcov/
-coverage.xml
-*.lcov
-cov.xml
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Misc
-*.out
-*.orig
-*.rej
-*.log
-
-# Ignore local dev/test artifacts
-infra/docker/mosquitto/data/
-infra/docker/mosquitto/log/
-infra/docker/mosquitto/mosquitto.db
-infra/docker/mosquitto/mosquitto.db.new
-infra/docker/mosquitto/mosquitto.db.old
-infra/docker/mosquitto/mosquitto.db.backup
-infra/docker/mosquitto/mosquitto.db.*
-
-# Ignore docker-compose override files
-infra/docker/docker-compose.override.yml
-
-# Ignore secrets
-secrets.env
-*.secret
-*.key
-*.pem
-
-# Ignore frontend cache
-frontend/web/.cache/
-
-# Ignore test output
-*.testoutput
-test-results/
-junit.xml
-.tox/
-
-# Ignore edge-controller runtime files
-edge-controllers/pi-template/*.log
-edge-controllers/pi-template/*.db
-edge-controllers/pi-template/__pycache__/
-
-# Ignore central_api runtime files
-central_api/app/__pycache__/
-central_api/app/*.db
-central_api/app/*.log
-
-# Ignore gateway runtime files
-gateway/orchestrator/node_modules/
-gateway/orchestrator/*.log
-
-# Ignore persistence DB init artifacts
-persistence/influxdb/data/
-persistence/timescaledb/data/
-
-# Ignore scripts output
-scripts/*.log
-scripts/*.out
-
-# Ignore test coverage
-coverage/
-
-# Ignore backup files
 *~
 *.bak
 *.tmp
 
-# Ignore lock files
-# (package-lock.json moved to Node.js section)
+# JetBrains
+*.iml
+*.ipr
+*.iws
+.idea/
 
-# Ignore devcontainer
-.devcontainer/
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
 
-# Ignore CI/CD artifacts (duplicate removed - now in Coverage section)
-
-# Ignore other temp files
-*.tmp
-*.temp
-*.swp
-*.swo
-
-# Ignore system files
+# =============================================================================
+# OS Generated
+# =============================================================================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
-# Ignore Python virtual environments
-venv/
-ENV/
-.env/
+# =============================================================================
+# Docker
+# =============================================================================
+docker-compose.override.yml
 
-# Ignore frontend build artifacts
-frontend/web/.next/
-frontend/web/.vercel/
+# =============================================================================
+# Testing / Logs
+# =============================================================================
+test-logs/
+*.log
+logs/
 
-# Ignore docker volumes
-volumes/
+# =============================================================================
+# Secrets / Environment
+# =============================================================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
 
-# Ignore test results (duplicate removed - now in Test output section)
-
-# Ignore pip cache
-pip-cache/
-
-# Ignore pyright
-pyrightconfig.json
-
-# Ignore pytest cache (duplicate removed - now in Python tooling section)
-
-# Ignore mypy cache (duplicate removed - now in Python tooling section)
-
-# Ignore coverage (duplicate removed - now in Coverage section)
-
-# Ignore Sphinx build
-_build/
-
-# Ignore Terraform state
+# =============================================================================
+# Infrastructure
+# =============================================================================
+# Terraform
 *.tfstate
-*.tfstate.backup
+*.tfstate.*
 .terraform/
+.terraform.lock.hcl
+crash.log
 
-# Ignore Kubernetes manifests output
-infra/k8s/manifests/*.out
-infra/k8s/manifests/*.log
+# Ansible
+*.retry
 
-# Ignore local dev scripts
-scripts/dev_up.sh.log
-
-# Ignore miscellaneous
-*.bak
-*.swp
-*.swo
-*.tmp
-*.temp
-*.out
+# =============================================================================
+# Misc
+# =============================================================================
 *.orig
 *.rej
-
-# act (GitHub Actions local testing)
-.secrets
-.env.act
-event.json
-/tmp/act-artifacts
-
-# Node.js
-# End of .gitignore
+.aider*
