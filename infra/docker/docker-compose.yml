@@ -59,21 +59,6 @@ services:
     stdin_open: true
     tty: true
 
-  edge-controller:
-    profiles: ["local-dev", "remote-dev", "prod"]
-    build:
-      context: ../../edge-controllers/pi-template
-      dockerfile: ${EDGE_CONTROLLER_DOCKERFILE:-Dockerfile.dev}
-    depends_on:
-      mqtt:
-        condition: service_started
-      central_api:
-        condition: service_healthy
-    environment:
-      - MQTT_BROKER=mqtt
-      - MQTT_PORT=1883
-      - LOCAL_DEV=${LOCAL_DEV:-false}
-
   debug:
     profiles: ["local-dev"]
     image: nicolaka/netshoot:latest
