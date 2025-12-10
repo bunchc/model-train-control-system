@@ -37,16 +37,32 @@ else
     echo "Docker volume ${VOLUME_NAME} does not exist. Skipping removal."
 fi
 
-ssh pi@192.168.2.214 'docker stop edge-controller-m1 edge-controller-m3' || {
-    echo "Error: Failed to stop edge controllers on remote Pi."
-    exit 1
-} && {
-    echo "Successfully stopped edge controllers on remote Pi."
-    ssh pi@192.168.2.214 'docker rm edge-controller-m1 edge-controller-m3' || {
-        echo "Error: Failed to remove edge controllers on remote Pi."
-        exit 1
-    }
-}
+# Stop and remove edge controllers on remote Pi (only if they exist)
+echo "=== Cleanup Pi Edge Controllers ==="
+for container in edge-controller-m1 edge-controller-m3; do
+    # Check if container exists
+    if ssh pi@192.168.2.214 "docker ps -a --format '{{.Names}}' | grep -q '^${container}\$'"; then
+        # Check if container is running
+        if ssh pi@192.168.2.214 "docker ps --format '{{.Names}}' | grep -q '^${container}\$'"; then
+            echo "Stopping ${container}..."
+            ssh pi@192.168.2.214 "docker stop ${container}" || {
+                echo "Error: Failed to stop ${container} on remote Pi."
+                exit 1
+            }
+        else
+            echo "Container ${container} exists but is not running. Skipping stop."
+        fi
+        # Remove the container
+        echo "Removing ${container}..."
+        ssh pi@192.168.2.214 "docker rm ${container}" || {
+            echo "Error: Failed to remove ${container} on remote Pi."
+            exit 1
+        }
+        echo "Successfully removed ${container}."
+    else
+        echo "Container ${container} does not exist on remote Pi. Skipping."
+    fi
+done
 
 # Post tear-down status
 echo "=== Local Services ==="
