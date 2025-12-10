@@ -168,7 +168,7 @@ class ConfigRepository:
                 params.append(cpu_count)
 
             # Whitelist allowed columns for heartbeat/telemetry updates
-            ALLOWED_COLUMNS = {
+            allowed_columns = {
                 "last_seen",
                 "status",
                 "config_hash",
@@ -178,14 +178,14 @@ class ConfigRepository:
                 "memory_mb",
                 "cpu_count",
             }
-            safe_updates = [u for u in updates if u.split("=")[0].strip() in ALLOWED_COLUMNS]
+            safe_updates = [u for u in updates if u.split("=")[0].strip() in allowed_columns]
             if len(safe_updates) != len(updates):
                 msg = "Invalid column in update_fields for edge_controllers"
                 raise ValueError(msg)
             params.append(controller_id)
             set_clause = ", ".join(safe_updates)
-            # Only whitelisted column names are interpolated, values are parameterized
-            query = f"UPDATE edge_controllers SET {set_clause} WHERE id = ?"
+            # Safe: set_clause is built only from whitelisted columns, values are parameterized
+            query = f"UPDATE edge_controllers SET {set_clause} WHERE id = ?"  # nosec
             cursor = conn.execute(query, params)
             conn.commit()
 
@@ -236,6 +236,7 @@ class ConfigRepository:
                 allowed_columns = {
                     "name",
                     "address",
+                    "enabled",
                     "status",
                     "last_heartbeat",
                     "platform",
@@ -246,7 +247,8 @@ class ConfigRepository:
                     msg = "Invalid column in update_fields for edge_controllers"
                     raise ValueError(msg)
                 set_clause = ", ".join(safe_updates)
-                query = f"UPDATE edge_controllers SET {set_clause} WHERE id = ?"
+                # Safe: set_clause is built only from whitelisted columns, values are parameterized
+                query = f"UPDATE edge_controllers SET {set_clause} WHERE id = ?"  # nosec
                 conn.execute(query, params)
                 conn.commit()
                 logger.info(f"Updated edge controller: {controller_id}")
@@ -343,7 +345,8 @@ class ConfigRepository:
                     raise ValueError(msg)
                 params.append(train_id)
                 set_clause = ", ".join(safe_updates)
-                query = f"UPDATE trains SET {set_clause} WHERE id = ?"
+                # Safe: set_clause is built only from whitelisted columns, values are parameterized
+                query = f"UPDATE trains SET {set_clause} WHERE id = ?"  # nosec
                 conn.execute(query, params)
                 conn.commit()
                 logger.info(f"Updated train: {train_id}")
@@ -361,8 +364,7 @@ class ConfigRepository:
         Args:
             controller_id: UUID of the edge controller
 
-        Returns:
-            List of train configuration dicts
+            return True
         """
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
