@@ -1,0 +1,97 @@
+# =========================
+# Global ignores
+# =========================
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# =========================
+# Python artifacts
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+*.egg-info/
+*.egg
+*.log
+*.coverage
+htmlcov/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+dist/
+build/
+coverage.xml
+bandit-report.json
+safety-report.json
+mypy-report.xml
+
+# =========================
+# Node.js artifacts
+# =========================
+node_modules/
+dist/
+coverage/
+.nyc_output/
+.cache/
+*.tsbuildinfo
+*.eslintcache
+*.prettiercache
+*.log
+.env
+.env.*
+.vitest/
+test-results/
+test-logs/
+playwright-report/
+playwright-artifacts/
+
+# =========================
+# Ansible secrets and temp
+# =========================
+infra/ansible/secrets/vault.yml
+infra/ansible/.vault_pass
+infra/ansible/*.retry
+infra/ansible/.ansible/
+infra/ansible/facts/
+infra/ansible/logs/
+
+# =========================
+# CI/CD & GitHub Actions
+# =========================
+.github/workflows/*.yml.disabled
+.github/workflows/*.yml.local
+.github/act-config/
+.actrc
+.secrets
+event.json
+
+# =========================
+# Test artifacts (global)
+# =========================
+test-logs/
+test-results/
+*.log
+*.xml
+*.json
+*.html
+
+# =========================
+# Miscellaneous
+# =========================
+tmp/
+.tmp/
+*.orig
+*.rej

@@ -217,3 +217,124 @@ class TestConfigRepository:
 
         # If connections aren't closed, this would fail or leak resources
         assert True
+
+
+@pytest.mark.unit()
+class TestControllerHeartbeat:
+    """Test suite for controller heartbeat functionality."""
+
+    def test_add_edge_controller_sets_timestamps(
+        self, temp_db_path: Path, temp_schema_path: Path
+    ) -> None:
+        """Test that add_edge_controller sets first_seen and last_seen."""
+        repo = ConfigRepository(temp_db_path, temp_schema_path)
+
+        repo.add_edge_controller("heartbeat-test-001", "heartbeat-controller", "192.168.1.50")
+
+        controller = repo.get_edge_controller("heartbeat-test-001")
+        assert controller is not None
+        assert controller["first_seen"] is not None
+        assert controller["last_seen"] is not None
+        assert controller["status"] == "online"
+
+    def test_heartbeat_updates_last_seen(self, temp_db_path: Path, temp_schema_path: Path) -> None:
+        """Test that heartbeat updates last_seen timestamp."""
+        repo = ConfigRepository(temp_db_path, temp_schema_path)
+        repo.add_edge_controller("hb-001", "test-controller", "192.168.1.100")
+
+        # Get initial last_seen
+        controller_before = repo.get_edge_controller("hb-001")
+        assert controller_before is not None
+
+        # Send heartbeat
+        result = repo.update_controller_heartbeat("hb-001")
+
+        assert result is True
+        controller_after = repo.get_edge_controller("hb-001")
+        assert controller_after is not None
+        assert controller_after["status"] == "online"
+        # last_seen should be updated (at least not None)
+        assert controller_after["last_seen"] is not None
+
+    def test_heartbeat_with_all_fields(self, temp_db_path: Path, temp_schema_path: Path) -> None:
+        """Test heartbeat with all telemetry fields."""
+        repo = ConfigRepository(temp_db_path, temp_schema_path)
+        repo.add_edge_controller("hb-002", "full-telemetry", "192.168.1.101")
+
+        result = repo.update_controller_heartbeat(
+            controller_id="hb-002",
+            config_hash="abc123def456",
+            version="2.0.0",
+            platform="Linux-5.15.0-aarch64",
+            python_version="3.11.2",
+            memory_mb=4096,
+            cpu_count=4,
+        )
+
+        assert result is True
+        controller = repo.get_edge_controller("hb-002")
+        assert controller is not None
+        assert controller["config_hash"] == "abc123def456"
+        assert controller["version"] == "2.0.0"
+        assert controller["platform"] == "Linux-5.15.0-aarch64"
+        assert controller["python_version"] == "3.11.2"
+        assert controller["memory_mb"] == 4096
+        assert controller["cpu_count"] == 4
+        assert controller["status"] == "online"
+
+    def test_heartbeat_with_partial_fields(
+        self, temp_db_path: Path, temp_schema_path: Path
+    ) -> None:
+        """Test heartbeat with only some telemetry fields."""
+        repo = ConfigRepository(temp_db_path, temp_schema_path)
+        repo.add_edge_controller("hb-003", "partial-telemetry", "192.168.1.102")
+
+        # First heartbeat with version only
+        result = repo.update_controller_heartbeat(
+            controller_id="hb-003",
+            version="1.5.0",
+        )
+
+        assert result is True
+        controller = repo.get_edge_controller("hb-003")
+        assert controller is not None
+        assert controller["version"] == "1.5.0"
+        assert controller["config_hash"] is None  # Not set
+        assert controller["memory_mb"] is None  # Not set
+
+        # Second heartbeat with memory only - version should persist
+        result = repo.update_controller_heartbeat(
+            controller_id="hb-003",
+            memory_mb=2048,
+        )
+
+        assert result is True
+        controller = repo.get_edge_controller("hb-003")
+        assert controller is not None
+        assert controller["version"] == "1.5.0"  # Still set from before
+        assert controller["memory_mb"] == 2048  # Now set
+
+    def test_heartbeat_nonexistent_controller(
+        self, temp_db_path: Path, temp_schema_path: Path
+    ) -> None:
+        """Test heartbeat for non-existent controller returns False."""
+        repo = ConfigRepository(temp_db_path, temp_schema_path)
+
+        result = repo.update_controller_heartbeat("nonexistent-controller-id")
+
+        assert result is False
+
+    def test_heartbeat_empty_updates_status(
+        self, temp_db_path: Path, temp_schema_path: Path
+    ) -> None:
+        """Test that heartbeat with no fields still updates last_seen and status."""
+        repo = ConfigRepository(temp_db_path, temp_schema_path)
+        repo.add_edge_controller("hb-004", "minimal-heartbeat", "192.168.1.103")
+
+        result = repo.update_controller_heartbeat("hb-004")
+
+        assert result is True
+        controller = repo.get_edge_controller("hb-004")
+        assert controller is not None
+        assert controller["status"] == "online"
+        assert controller["last_seen"] is not None

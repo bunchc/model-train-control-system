@@ -1,4 +1,12 @@
+import os
 #!/usr/bin/env python3
+import os
+import json
+import logging
+import sqlite3
+import sys
+from pathlib import Path
+import requests
 """Bootstrap script to register edge controllers and create trains in Central API.
 
 This script:
@@ -9,6 +17,7 @@ This script:
 Usage:
     python scripts/bootstrap_trains.py
 """
+
 
 import json
 import logging
@@ -21,9 +30,10 @@ import requests
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-# Central API configuration
-CENTRAL_API_HOST = "192.168.1.199"
-CENTRAL_API_PORT = 8000
+# Central API configuration (configurable via env vars, defaults for local/test)
+import os
+CENTRAL_API_HOST = os.environ.get("CENTRAL_API_HOST", "localhost")
+CENTRAL_API_PORT = int(os.environ.get("CENTRAL_API_PORT", "8100"))
 CENTRAL_API_URL = f"http://{CENTRAL_API_HOST}:{CENTRAL_API_PORT}"
 
 # Edge controller configuration (from Ansible inventory)

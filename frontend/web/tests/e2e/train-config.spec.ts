@@ -28,7 +28,7 @@ async function waitForModalClose(page: import('@playwright/test').Page) {
 test.describe('Train Configuration Modal', () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to the dashboard
-    await page.goto('http://localhost:3001');
+    await page.goto('/');
 
     // Wait for trains to load - look for a train card link
     await page.waitForSelector('a[href^="/trains/"]', { timeout: 10000 });

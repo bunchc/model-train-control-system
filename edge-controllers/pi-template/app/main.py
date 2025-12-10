@@ -18,10 +18,15 @@ Or in simulation mode:
 """
 
 import asyncio
+import hashlib
+import json
 import logging
 import os
+import platform as platform_module
 import sys
 import time
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any, Optional
 
@@ -35,11 +40,15 @@ logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(n
 
 logger = logging.getLogger(__name__)
 
-# Check if running in local dev mode
+
+# Simulation mode (for CI/E2E or dev)
+SIMULATION_MODE = os.getenv("SIMULATION_MODE", "false").lower() == "true"
 LOCAL_DEV = os.getenv("LOCAL_DEV", "false").lower() == "true"
 
 # Hardware controllers - only import if not in local-dev mode
-if not LOCAL_DEV:
+
+# Hardware is only available if not in simulation or local dev mode
+if not (SIMULATION_MODE or LOCAL_DEV):
     try:
         from .dc_motor_hat import DCMotorHatController  # noqa: F401
 
@@ -49,7 +58,27 @@ if not LOCAL_DEV:
         logger.warning("Hardware modules not available, running in simulation mode")
 else:
     HARDWARE_AVAILABLE = False
-    logger.info("LOCAL_DEV mode enabled, running in simulation mode")
+    logger.info("Simulation mode enabled (SIMULATION_MODE or LOCAL_DEV)")
+
+
+# Heartbeat interval in seconds - must be less than frontend ONLINE_MAX_AGE (30s)
+# Default 15s provides margin for network latency and missed heartbeats
+HEARTBEAT_INTERVAL_SECONDS = int(os.getenv("HEARTBEAT_INTERVAL", "15"))
+
+
+def _get_package_version() -> str:
+    """Get the package version from metadata.
+
+    Returns:
+        Version string, or "unknown" if package not installed.
+    """
+    try:
+        return get_package_version("edge-controller")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+PACKAGE_VERSION = _get_package_version()
 
 
 class DCMotorSimulator:
@@ -152,6 +181,14 @@ class EdgeControllerApp:
         self.speed_task: Optional[asyncio.Task] = None  # Track speed ramping task
         self.main_loop: Optional[asyncio.AbstractEventLoop] = None  # Store main event loop
 
+        # Heartbeat-related attributes (populated in initialize())
+        self._controller_uuid: Optional[str] = None
+        self._runtime_config: Optional[dict[str, Any]] = None
+        self._cached_system_info: Optional[dict[str, Any]] = None
+        self._api_client: Optional[Any] = (
+            None  # CentralAPIClient, typed as Any to avoid circular import
+        )
+
     def initialize(self) -> bool:  # noqa: PLR0915
         """Initialize edge controller components.
 
@@ -161,7 +198,7 @@ class EdgeControllerApp:
         logger.info("=" * 60)
         logger.info("EDGE CONTROLLER INITIALIZATION STARTED")
         logger.info("=" * 60)
-        logger.info(f"Environment: LOCAL_DEV={LOCAL_DEV}")
+        logger.info(f"Environment: SIMULATION_MODE={SIMULATION_MODE}, LOCAL_DEV={LOCAL_DEV}")
         logger.info(f"Hardware Available: {HARDWARE_AVAILABLE}")
 
         # Initialize configuration
@@ -184,6 +221,9 @@ class EdgeControllerApp:
             service_config, runtime_config = self.config_manager.initialize()
             logger.info("✓ Configuration manager initialized successfully")
 
+            # Store API client reference for heartbeat
+            self._api_client = self.config_manager.api_client
+
         except ConfigurationError:
             # Critical error - cannot proceed (service config missing or API unreachable with no cache)
             logger.exception("=" * 60)
@@ -196,7 +236,7 @@ class EdgeControllerApp:
         # runtime_config will be None if controller is registered but not assigned to a train
         if runtime_config is None:
             # Valid state: Controller is registered but waiting for admin to assign trains
-            # In production, implement a polling loop to check for config updates
+            # In all modes (including simulation), implement a polling loop to check for config updates
             logger.warning("=" * 60)
             logger.warning("Edge controller registered but no train configuration available.")
             logger.warning("Waiting for administrator to assign trains to this controller.")
@@ -208,6 +248,12 @@ class EdgeControllerApp:
         logger.info("Extracting runtime configuration...")
         self.train_id = runtime_config.get("train_id")
         logger.info(f"✓ Assigned to train: {self.train_id}")
+
+        # Store runtime config for heartbeat system info
+        self._runtime_config = runtime_config
+        self._controller_uuid = runtime_config.get("uuid")
+        logger.info(f"✓ Controller UUID: {self._controller_uuid}")
+
         mqtt_broker = runtime_config.get("mqtt_broker", {})
         status_topic = runtime_config.get("status_topic", f"trains/{self.train_id}/status")
         commands_topic = runtime_config.get("commands_topic", f"trains/{self.train_id}/commands")
@@ -689,15 +735,138 @@ class EdgeControllerApp:
             # Log error but don't fail - status publishing is best-effort
             logger.exception("Failed to publish status update")
 
+    def _get_memory_mb(self) -> Optional[int]:
+        """Get system memory in MB by reading /proc/meminfo.
+
+        Returns:
+            Total memory in MB, or None if unable to read.
+        """
+        meminfo_path = Path("/proc/meminfo")
+        if not meminfo_path.exists():
+            return None
+
+        try:
+            content = meminfo_path.read_text()
+            for line in content.splitlines():
+                if line.startswith("MemTotal:"):
+                    # Line format is "MemTotal:" followed by value in kB
+                    parts = line.split()
+                    if len(parts) >= 2:  # noqa: PLR2004
+                        kb = int(parts[1])
+                        return kb // 1024
+            return None
+        except (OSError, ValueError):
+            return None
+
+    def _compute_config_hash(self) -> Optional[str]:
+        """Compute MD5 hash of runtime configuration.
+
+        Returns:
+            MD5 hex digest of JSON-serialized config, or None if no config.
+        """
+        if self._runtime_config is None:
+            return None
+
+        try:
+            config_json = json.dumps(self._runtime_config, sort_keys=True)
+            return hashlib.md5(config_json.encode(), usedforsecurity=False).hexdigest()
+        except (TypeError, ValueError):
+            return None
+
+    def _gather_system_info(self) -> dict[str, Any]:
+        """Gather system information for heartbeat payload.
+
+        Collects platform info, memory, and configuration hash.
+        Results are cached after first call.
+
+        Returns:
+            Dictionary containing system information.
+        """
+        if self._cached_system_info is not None:
+            return self._cached_system_info
+
+        self._cached_system_info = {
+            "os": platform_module.system(),
+            "os_version": platform_module.release(),
+            "python_version": platform_module.python_version(),
+            "architecture": platform_module.machine(),
+            "software_version": PACKAGE_VERSION,
+            "memory_mb": self._get_memory_mb(),
+            "config_hash": self._compute_config_hash(),
+        }
+        return self._cached_system_info
+
+    def _send_heartbeat(self) -> bool:
+        """Send heartbeat telemetry to central API.
+
+        Gathers system info and sends to API. Fire-and-forget pattern -
+        failures are logged but don't interrupt operation.
+
+        Returns:
+            True if heartbeat sent successfully, False otherwise.
+        """
+        if self._api_client is None:
+            logger.debug("Skipping heartbeat: API client not initialized")
+            return False
+
+        if self._controller_uuid is None:
+            logger.debug("Skipping heartbeat: controller UUID not set")
+            return False
+
+        system_info = self._gather_system_info()
+
+        # Build platform string from system info components
+        platform_str: Optional[str] = None
+        os_name = system_info.get("os")
+        os_version = system_info.get("os_version")
+        if os_name and os_version:
+            arch = system_info.get("architecture", "")
+            platform_str = f"{os_name}-{os_version}-{arch}".rstrip("-")
+
+        success = self._api_client.send_heartbeat(
+            controller_uuid=self._controller_uuid,
+            config_hash=system_info.get("config_hash"),
+            version=system_info.get("software_version"),
+            platform=platform_str,
+            python_version=system_info.get("python_version"),
+            memory_mb=system_info.get("memory_mb"),
+            cpu_count=None,  # Not currently gathered by _gather_system_info
+        )
+
+        if success:
+            logger.debug(f"Heartbeat sent successfully (interval={HEARTBEAT_INTERVAL_SECONDS}s)")
+        else:
+            logger.warning("Heartbeat failed - will retry next interval")
+
+        return success
+
     async def run_async(self) -> None:
-        """Run the main application loop with async support."""
+        """Run the main application loop with async support.
+
+        Handles:
+        - MQTT message processing (via callbacks)
+        - Periodic heartbeat sending to central API
+        - Graceful shutdown on interrupt
+        """
         # Store reference to the main event loop for MQTT callbacks
         self.main_loop = asyncio.get_running_loop()
+
+        # Send initial heartbeat immediately
+        logger.info(f"Starting heartbeat loop (interval={HEARTBEAT_INTERVAL_SECONDS}s)")
+        self._send_heartbeat()
+        last_heartbeat_time = time.time()
 
         try:
             logger.info("Edge controller running. Press Ctrl+C to stop.")
             while True:
                 await asyncio.sleep(1)
+
+                # Check if heartbeat interval has elapsed
+                current_time = time.time()
+                if current_time - last_heartbeat_time >= HEARTBEAT_INTERVAL_SECONDS:
+                    self._send_heartbeat()
+                    last_heartbeat_time = current_time
+
         except KeyboardInterrupt:
             logger.info("Shutting down due to keyboard interrupt")
         finally:

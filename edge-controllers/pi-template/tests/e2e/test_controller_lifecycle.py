@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from main import EdgeControllerApp
+from app.main import EdgeControllerApp
 
 
 @pytest.mark.e2e()
@@ -35,15 +35,20 @@ class TestControllerLifecycle:
         config_file, cached_file = setup_environment
 
         with (
-            patch("api.client.requests.get") as mock_get,
-            patch("mqtt_client.mqtt.Client"),
-            patch("main.HARDWARE_AVAILABLE", False),
-            patch("main.Path.__truediv__") as mock_div,
+            patch("app.api.client.requests.get") as mock_get,
+            patch("app.mqtt_client.mqtt.Client"),
+            patch("app.main.HARDWARE_AVAILABLE", False),
+            patch("app.main.Path.__truediv__") as mock_div,
         ):
             mock_div.side_effect = [config_file, cached_file]
 
             ping_response = MagicMock()
             ping_response.status_code = 200
+
+            # check_controller_exists() calls GET /api/controllers/{uuid}/ping
+            controller_exists_response = MagicMock()
+            controller_exists_response.status_code = 200
+
             config_response = MagicMock()
             config_response.status_code = 200
             config_response.json.return_value = {
@@ -53,7 +58,7 @@ class TestControllerLifecycle:
                 "status_topic": "trains/train-1/status",
                 "commands_topic": "trains/train-1/commands",
             }
-            mock_get.side_effect = [ping_response, config_response]
+            mock_get.side_effect = [ping_response, controller_exists_response, config_response]
 
             app = EdgeControllerApp()
             app.initialize()

@@ -17,10 +17,14 @@ def temp_db_path() -> Generator[Path, None, None]:
     """Provide a temporary database path for testing.
 
     Yields:
-        Path to temporary database file
+        Path to temporary database file (file does NOT exist yet)
     """
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as temp_file:
         db_path = Path(temp_file.name)
+
+    # Remove the file so the test can verify database creation
+    if db_path.exists():
+        db_path.unlink()
 
     yield db_path
 
@@ -101,7 +105,16 @@ def schema_sql() -> str:
         name TEXT NOT NULL,
         description TEXT,
         address TEXT,
-        enabled INTEGER DEFAULT 1
+        enabled INTEGER DEFAULT 1,
+        first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        config_hash TEXT,
+        version TEXT,
+        platform TEXT,
+        python_version TEXT,
+        memory_mb INTEGER,
+        cpu_count INTEGER,
+        status TEXT DEFAULT 'unknown'
     );
 
     CREATE TABLE IF NOT EXISTS trains (

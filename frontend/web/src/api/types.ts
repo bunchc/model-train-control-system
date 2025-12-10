@@ -50,6 +50,11 @@ export interface TrainCommand {
   direction?: 'forward' | 'reverse' | null;
 }
 
+/**
+ * Controller status derived from last_seen timestamp
+ */
+export type ControllerStatus = 'online' | 'offline' | 'unknown';
+
 export interface EdgeController {
   id: string;
   name: string;
@@ -57,6 +62,29 @@ export interface EdgeController {
   address?: string | null;
   enabled?: boolean;
   trains?: Train[];
+
+  // Telemetry fields (populated by heartbeat)
+  first_seen?: string | null;
+  last_seen?: string | null;
+  config_hash?: string | null;
+  version?: string | null;
+  platform?: string | null;
+  python_version?: string | null;
+  memory_mb?: number | null;
+  cpu_count?: number | null;
+  status?: ControllerStatus | null;
+}
+
+/**
+ * Heartbeat payload sent by edge controllers
+ */
+export interface ControllerHeartbeat {
+  config_hash?: string;
+  version?: string;
+  platform?: string;
+  python_version?: string;
+  memory_mb?: number;
+  cpu_count?: number;
 }
 
 export interface FullConfig {

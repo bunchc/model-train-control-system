@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { LoadingState } from '@/components/common/LoadingState';
 import { TelemetryDisplay } from '@/components/trains/TelemetryDisplay';
@@ -13,7 +13,14 @@ import { ArrowLeftIcon, ExclamationCircleIcon, CogIcon } from '@heroicons/react/
  */
 export const TrainDetail: React.FC = () => {
   const { trainId } = useParams<{ trainId: string }>();
+  const [searchParams] = useSearchParams();
   const { data: trains, isLoading: trainsLoading } = useTrains();
+
+  // Read breadcrumb context from query params (set by AssignedTrainsTable)
+  const fromPath = searchParams.get('from');
+  const fromName = searchParams.get('fromName');
+  const backPath = fromPath ?? '/';
+  const backLabel = fromName ? `Back to ${fromName}` : fromPath ? 'Back' : 'Back to Dashboard';
   const { data: status, isLoading: statusLoading, error } = useTrainStatus(trainId!);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
 
@@ -57,11 +64,11 @@ export const TrainDetail: React.FC = () => {
       <div className="space-y-6">
         {/* Breadcrumb */}
         <Link
-          to="/"
+          to={backPath}
           className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
         >
           <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
-          Back to Dashboard
+          {backLabel}
         </Link>
 
         {/* Page Header */}

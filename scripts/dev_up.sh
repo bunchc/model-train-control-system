@@ -3,6 +3,9 @@ set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 COMPOSE_DIR="$ROOT_DIR/infra/docker"
+TEST_HOST=(:- "localhost")
+TEST_FE_PORT=(:- "5174")
+TEST_API_PORT=(:- "8100")
 
 echo "Starting development stack from $COMPOSE_DIR"
  # Only cd if not already in infra/docker
@@ -60,9 +63,9 @@ wait_tcp() {
 
 failed=0
 
-if ! wait_http "http://localhost:8000/" 60; then failed=1; fi
-if ! wait_http "http://localhost:3000/" 60; then failed=1; fi
-if ! wait_tcp "localhost" 1883 60; then failed=1; fi
+if ! wait_http "http://${TEST_HOST}:${TEST_API_PORT}/" 60; then failed=1; fi
+if ! wait_http "http://${TEST_HOST}:${TEST_FE_PORT}/" 60; then failed=1; fi
+if ! wait_tcp "${TEST_HOST}" 1883 60; then failed=1; fi
 
 if [ $failed -ne 0 ]; then
   echo "One or more services failed to become healthy. Showing compose ps and recent logs:"

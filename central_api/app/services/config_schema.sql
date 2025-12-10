@@ -22,7 +22,17 @@ CREATE TABLE IF NOT EXISTS edge_controllers (
     name TEXT NOT NULL,
     description TEXT,
     address TEXT,
-    enabled BOOLEAN NOT NULL
+    enabled BOOLEAN NOT NULL,
+    -- Telemetry fields (added 2025-12-04)
+    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    config_hash TEXT,
+    version TEXT,
+    platform TEXT,
+    python_version TEXT,
+    memory_mb INTEGER,
+    cpu_count INTEGER,
+    status TEXT DEFAULT 'unknown'
 );
 
 -- Table for trains (referenced by edge_controller)

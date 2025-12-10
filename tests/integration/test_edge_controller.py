@@ -21,11 +21,12 @@ from typing import Any, Dict, List
 import paho.mqtt.client as mqtt
 import pytest
 import requests
+import os
 
-
-BASE_API_URL = "http://localhost:8000/api"
+API_PORT = os.getenv("API_PORT", "8000")
+BASE_API_URL = f"http://localhost:{API_PORT}/api"
 MQTT_BROKER_HOST = "localhost"
-MQTT_BROKER_PORT = 1883
+MQTT_BROKER_PORT = int(os.getenv("MQTT_PORT", "1883"))
 TIMEOUT = 10  # seconds
 
 

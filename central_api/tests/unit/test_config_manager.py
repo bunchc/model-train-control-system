@@ -82,9 +82,10 @@ class TestConfigManager:
             manager.repository = MagicMock()
             manager.repository.add_edge_controller = mock_add
 
-        controller_uuid = manager.add_edge_controller("test-ctrl", "192.168.1.100")
+        test_uuid = "550e8400-e29b-41d4-a716-446655440000"
+        controller_uuid = manager.add_edge_controller(test_uuid, "test-ctrl", "192.168.1.100")
 
-        assert UUID_PATTERN.match(controller_uuid)
+        assert controller_uuid == test_uuid
         mock_add.assert_called_once()
 
     @patch.object(ConfigRepository, "add_edge_controller", side_effect=Exception("DB error"))
@@ -96,7 +97,9 @@ class TestConfigManager:
             manager.repository.add_edge_controller = mock_add
 
         with pytest.raises(ConfigurationError, match="Failed to register controller"):
-            manager.add_edge_controller("test-ctrl", "192.168.1.100")
+            manager.add_edge_controller(
+                "550e8400-e29b-41d4-a716-446655440000", "test-ctrl", "192.168.1.100"
+            )
 
     def test_get_full_config(self) -> None:
         """Test retrieving full configuration."""
@@ -440,3 +443,84 @@ class TestConfigManager:
         assert result.plugin.name == "dc_motor"
         assert result.plugin.config["motor_type"] == "DC"
         assert result.plugin.config["max_voltage"] == 12
+
+
+@pytest.mark.unit()
+class TestControllerHeartbeat:
+    """Test suite for controller heartbeat functionality."""
+
+    def test_update_controller_heartbeat_success(self) -> None:
+        """Test successful heartbeat update."""
+        from app.models.schemas import ControllerHeartbeat
+
+        with patch.object(ConfigManager, "_initialize_configuration"):
+            manager = ConfigManager()
+
+        manager.repository = MagicMock()
+        manager.repository.update_controller_heartbeat.return_value = True
+
+        heartbeat = ControllerHeartbeat(
+            config_hash="abc123",
+            version="1.0.0",
+        )
+
+        result = manager.update_controller_heartbeat("ctrl-123", heartbeat)
+
+        assert result is True
+        manager.repository.update_controller_heartbeat.assert_called_once_with(
+            controller_id="ctrl-123",
+            config_hash="abc123",
+            version="1.0.0",
+            platform=None,
+            python_version=None,
+            memory_mb=None,
+            cpu_count=None,
+        )
+
+    def test_update_controller_heartbeat_nonexistent(self) -> None:
+        """Test heartbeat for nonexistent controller returns False."""
+        from app.models.schemas import ControllerHeartbeat
+
+        with patch.object(ConfigManager, "_initialize_configuration"):
+            manager = ConfigManager()
+
+        manager.repository = MagicMock()
+        manager.repository.update_controller_heartbeat.return_value = False
+
+        heartbeat = ControllerHeartbeat(version="1.0.0")
+
+        result = manager.update_controller_heartbeat("nonexistent", heartbeat)
+
+        assert result is False
+
+    def test_update_controller_heartbeat_full_data(self) -> None:
+        """Test heartbeat with all telemetry fields."""
+        from app.models.schemas import ControllerHeartbeat
+
+        with patch.object(ConfigManager, "_initialize_configuration"):
+            manager = ConfigManager()
+
+        manager.repository = MagicMock()
+        manager.repository.update_controller_heartbeat.return_value = True
+
+        heartbeat = ControllerHeartbeat(
+            config_hash="sha256:deadbeef",
+            version="2.1.0",
+            platform="linux",
+            python_version="3.11.4",
+            memory_mb=1024,
+            cpu_count=4,
+        )
+
+        result = manager.update_controller_heartbeat("ctrl-full", heartbeat)
+
+        assert result is True
+        manager.repository.update_controller_heartbeat.assert_called_once_with(
+            controller_id="ctrl-full",
+            config_hash="sha256:deadbeef",
+            version="2.1.0",
+            platform="linux",
+            python_version="3.11.4",
+            memory_mb=1024,
+            cpu_count=4,
+        )

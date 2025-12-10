@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 import yaml
 
-from config.loader import ConfigLoader, ConfigLoadError
+from app.config.loader import ConfigLoader, ConfigLoadError
 
 
 @pytest.mark.unit()
