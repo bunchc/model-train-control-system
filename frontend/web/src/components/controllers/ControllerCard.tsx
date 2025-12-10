@@ -55,6 +55,14 @@ export const ControllerCard: React.FC<ControllerCardProps> = ({ controller, onCl
             </span>
           </div>
 
+          {/* First Seen */}
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400">First Seen:</span>
+            <span className="font-medium text-gray-900 dark:text-gray-100">
+              {controller.first_seen ? formatRelativeTime(controller.first_seen) : 'Never'}
+            </span>
+          </div>
+
           {/* Last Seen */}
           <div className="flex justify-between text-sm">
             <span className="text-gray-600 dark:text-gray-400">Last Seen:</span>
