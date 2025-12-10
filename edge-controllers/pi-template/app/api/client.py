@@ -32,6 +32,7 @@ Typical usage:
 import logging
 import socket
 import time
+from http import HTTPStatus
 from typing import Any, Optional
 
 import requests
@@ -463,3 +464,88 @@ class CentralAPIClient:
         except ValueError:
             logger.exception("Invalid JSON in runtime config response")
             return None
+
+    def send_heartbeat(
+        self,
+        controller_uuid: str,
+        config_hash: Optional[str] = None,
+        version: Optional[str] = None,
+        platform: Optional[str] = None,
+        python_version: Optional[str] = None,
+        memory_mb: Optional[int] = None,
+        cpu_count: Optional[int] = None,
+    ) -> bool:
+        """Send heartbeat telemetry to central API.
+
+        Edge controllers call this periodically to report health and system info.
+        The Central API uses heartbeats to determine controller online/offline status.
+
+        Fire-and-Forget Pattern:
+            This method never raises exceptions. All errors are caught, logged as
+            warnings, and result in False return value. This ensures the main
+            application loop is never interrupted by heartbeat failures.
+
+        Args:
+            controller_uuid: UUID of this controller (from registration/runtime config)
+            config_hash: MD5 hash of current runtime config (optional)
+            version: Controller software version string (optional)
+            platform: OS platform string, e.g., "Linux-5.15.0-aarch64" (optional)
+            python_version: Python interpreter version, e.g., "3.11.2" (optional)
+            memory_mb: Total RAM in megabytes (optional)
+            cpu_count: Number of CPU cores (optional)
+
+        Returns:
+            True if heartbeat was accepted (200 OK), False otherwise
+
+        Note:
+            Only non-None fields are included in the request payload.
+            The API accepts partial updates - any subset of fields is valid.
+
+        Example:
+            >>> success = client.send_heartbeat(
+            ...     controller_uuid="550e8400-e29b-41d4-a716-446655440000",
+            ...     config_hash="a1b2c3d4e5f6",
+            ...     version="1.0.0",
+            ...     platform="Linux-6.1.0-rpi4",
+            ...     python_version="3.11.5",
+            ...     memory_mb=3906,
+            ...     cpu_count=4,
+            ... )
+            >>> if not success:
+            ...     logger.warning("Heartbeat failed, will retry next interval")
+        """
+        try:
+            url = f"{self.base_url}/api/controllers/{controller_uuid}/heartbeat"
+
+            # Build payload - only include non-None fields
+            payload: dict[str, Any] = {}
+            if config_hash is not None:
+                payload["config_hash"] = config_hash
+            if version is not None:
+                payload["version"] = version
+            if platform is not None:
+                payload["platform"] = platform
+            if python_version is not None:
+                payload["python_version"] = python_version
+            if memory_mb is not None:
+                payload["memory_mb"] = memory_mb
+            if cpu_count is not None:
+                payload["cpu_count"] = cpu_count
+
+            response = requests.post(url, json=payload, timeout=self.timeout)
+
+            if response.status_code == HTTPStatus.OK:
+                logger.debug(f"Heartbeat sent successfully for {controller_uuid}")
+                return True
+
+            if response.status_code == HTTPStatus.NOT_FOUND:
+                logger.warning(f"Heartbeat rejected: controller {controller_uuid} not found")
+                return False
+
+            # Other error status codes
+            logger.warning(f"Heartbeat failed with status {response.status_code}")
+            return False
+
+        except (RequestException, Timeout, RequestsConnectionError) as exc:
+            logger.warning(f"Heartbeat request failed: {exc}")
+            return False

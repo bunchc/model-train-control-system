@@ -10,7 +10,14 @@ import re
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from ..models.schemas import EdgeController, FullConfig, Plugin, Train, TrainStatus
+from ..models.schemas import (
+    ControllerHeartbeat,
+    EdgeController,
+    FullConfig,
+    Plugin,
+    Train,
+    TrainStatus,
+)
 from .config_loader import ConfigLoader, ConfigLoadError
 from .config_repository import ConfigRepository
 
@@ -391,6 +398,16 @@ class ConfigManager:
                     address=controller_row.get("address"),
                     enabled=bool(controller_row["enabled"]),
                     trains=trains,
+                    # Telemetry fields from heartbeat
+                    first_seen=controller_row.get("first_seen"),
+                    last_seen=controller_row.get("last_seen"),
+                    config_hash=controller_row.get("config_hash"),
+                    version=controller_row.get("version"),
+                    platform=controller_row.get("platform"),
+                    python_version=controller_row.get("python_version"),
+                    memory_mb=controller_row.get("memory_mb"),
+                    cpu_count=controller_row.get("cpu_count"),
+                    status=controller_row.get("status", "unknown"),
                 )
             )
 
@@ -431,7 +448,46 @@ class ConfigManager:
             address=row.get("address"),
             enabled=bool(row["enabled"]),
             trains=trains,
+            # Telemetry fields from heartbeat
+            first_seen=row.get("first_seen"),
+            last_seen=row.get("last_seen"),
+            config_hash=row.get("config_hash"),
+            version=row.get("version"),
+            platform=row.get("platform"),
+            python_version=row.get("python_version"),
+            memory_mb=row.get("memory_mb"),
+            cpu_count=row.get("cpu_count"),
+            status=row.get("status", "unknown"),
         )
+
+    def update_controller_heartbeat(
+        self, controller_id: str, heartbeat: ControllerHeartbeat
+    ) -> bool:
+        """Update controller telemetry from heartbeat data.
+
+        Args:
+            controller_id: UUID of the edge controller
+            heartbeat: Heartbeat data with telemetry fields
+
+        Returns:
+            True if controller was found and updated, False otherwise
+        """
+        success = self.repository.update_controller_heartbeat(
+            controller_id=controller_id,
+            config_hash=heartbeat.config_hash,
+            version=heartbeat.version,
+            platform=heartbeat.platform,
+            python_version=heartbeat.python_version,
+            memory_mb=heartbeat.memory_mb,
+            cpu_count=heartbeat.cpu_count,
+        )
+
+        if success:
+            logger.debug(f"Heartbeat received from controller {controller_id}")
+        else:
+            logger.warning(f"Heartbeat for unknown controller {controller_id}")
+
+        return success
 
     def get_trains(self) -> list[Train]:
         """Get all trains from database.

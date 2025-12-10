@@ -1,0 +1,78 @@
+services:
+  central_api:
+    build:
+      context: ../../central_api
+    environment:
+      MQTT_BROKER_HOST: mqtt
+      MQTT_BROKER_PORT: 1883
+      DATABASE_URL: sqlite:///app/test.db
+      CONFIG_PATH: /app/config.yaml
+      PORT: 8100
+    ports:
+      - "0.0.0.0:8100:8000"
+    volumes:
+      - ${PWD}/config.test.yaml:/app/config.yaml:ro
+    networks:
+      - testnet
+    depends_on:
+      mqtt:
+        condition: service_healthy
+  web-ui:
+    build:
+      context: ../../frontend/web
+      dockerfile: Dockerfile.dev
+    environment:
+      VITE_API_BASE_URL: http://192.168.1.199:8100
+      VITE_API_URL: http://192.168.1.199:8100
+      PORT: 5174
+    ports:
+      - "0.0.0.0:5174:3000"
+    volumes:
+      - ${PWD}/config.test.yaml:/app/config.yaml:ro
+    depends_on:
+      - central_api
+    networks:
+      - testnet
+      - default
+  mqtt:
+    image: eclipse-mosquitto:latest
+    ports:
+      - "18884:1883"
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-h", "localhost", "-p", "1883", "-t", "$$SYS/broker/version", "-C", "1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    networks:
+      - testnet
+  edge-controller:
+    build:
+      context: ../../edge-controllers/pi-template
+    environment:
+      LOCAL_DEV: "false"
+      MQTT_BROKER_HOST: mqtt
+      MQTT_BROKER_PORT: 1883
+      SIMULATION_MODE: "true"
+      CONFIG_PATH: /app/config.test.yaml
+      TRAIN_ID: "7e2b1c2a-8f3e-4b1a-9c2d-1a2b3c4d5e6f"
+      TRAIN_NAME: "Test Train"
+      MOTOR_PORT: "1"
+    depends_on:
+      - mqtt
+      - central_api
+    networks:
+      - testnet
+    volumes:
+      - ${PWD}/config.test.yaml:/app/edge-controller.yaml:ro
+      - ${PWD}/.tmp/edge-controller.conf:/app/edge-controller.conf:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  testnet:
+    driver: bridge

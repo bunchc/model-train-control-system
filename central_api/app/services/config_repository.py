@@ -103,13 +103,101 @@ class ConfigRepository:
         try:
             conn.execute(
                 """
-                INSERT INTO edge_controllers (id, name, address, enabled)
-                VALUES (?, ?, ?, 1)
+                INSERT INTO edge_controllers
+                    (id, name, address, enabled, first_seen, last_seen, status)
+                VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'online')
                 """,
                 (controller_id, name, address),
             )
             conn.commit()
             logger.info(f"Added edge controller: {name} ({controller_id})")
+        finally:
+            conn.close()
+
+    def update_controller_heartbeat(
+        self,
+        controller_id: str,
+        config_hash: Optional[str] = None,
+        version: Optional[str] = None,
+        platform: Optional[str] = None,
+        python_version: Optional[str] = None,
+        memory_mb: Optional[int] = None,
+        cpu_count: Optional[int] = None,
+    ) -> bool:
+        """Update edge controller heartbeat and telemetry data.
+
+        Always updates last_seen and status. Optionally updates other
+        telemetry fields if provided.
+
+        Args:
+            controller_id: UUID of controller
+            config_hash: MD5 hash of current configuration
+            version: Controller software version
+            platform: OS platform string
+            python_version: Python interpreter version
+            memory_mb: Total system memory in MB
+            cpu_count: Number of CPU cores
+
+        Returns:
+            True if update successful, False if controller not found
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        try:
+            # Always update last_seen and status
+            updates = ["last_seen = CURRENT_TIMESTAMP", "status = 'online'"]
+            params: list[Any] = []
+
+            # Add optional telemetry fields
+            if config_hash is not None:
+                updates.append("config_hash = ?")
+                params.append(config_hash)
+            if version is not None:
+                updates.append("version = ?")
+                params.append(version)
+            if platform is not None:
+                updates.append("platform = ?")
+                params.append(platform)
+            if python_version is not None:
+                updates.append("python_version = ?")
+                params.append(python_version)
+            if memory_mb is not None:
+                updates.append("memory_mb = ?")
+                params.append(memory_mb)
+            if cpu_count is not None:
+                updates.append("cpu_count = ?")
+                params.append(cpu_count)
+
+            # Whitelist allowed columns for heartbeat/telemetry updates
+            ALLOWED_COLUMNS = {
+                "last_seen",
+                "status",
+                "config_hash",
+                "version",
+                "platform",
+                "python_version",
+                "memory_mb",
+                "cpu_count",
+            }
+            safe_updates = [u for u in updates if u.split("=")[0].strip() in ALLOWED_COLUMNS]
+            if len(safe_updates) != len(updates):
+                msg = "Invalid column in update_fields for edge_controllers"
+                raise ValueError(msg)
+            params.append(controller_id)
+            set_clause = ", ".join(safe_updates)
+            # Only whitelisted column names are interpolated, values are parameterized
+            query = f"UPDATE edge_controllers SET {set_clause} WHERE id = ?"
+            cursor = conn.execute(query, params)
+            conn.commit()
+
+            if cursor.rowcount == 0:
+                logger.warning(f"Heartbeat for unknown controller: {controller_id}")
+                return False
+            logger.debug(f"Heartbeat received from controller: {controller_id}")
+            return True
+
+        except sqlite3.Error:
+            logger.exception(f"Failed to update heartbeat for controller {controller_id}")
+            return False
         finally:
             conn.close()
 
@@ -145,7 +233,20 @@ class ConfigRepository:
 
             if updates:
                 params.append(controller_id)
-                query = f"UPDATE edge_controllers SET {', '.join(updates)} WHERE id = ?"  # nosec B608
+                allowed_columns = {
+                    "name",
+                    "address",
+                    "status",
+                    "last_heartbeat",
+                    "platform",
+                    "python_version",
+                }
+                safe_updates = [u for u in updates if u.split("=")[0].strip() in allowed_columns]
+                if len(safe_updates) != len(updates):
+                    msg = "Invalid column in update_fields for edge_controllers"
+                    raise ValueError(msg)
+                set_clause = ", ".join(safe_updates)
+                query = f"UPDATE edge_controllers SET {set_clause} WHERE id = ?"
                 conn.execute(query, params)
                 conn.commit()
                 logger.info(f"Updated edge controller: {controller_id}")
@@ -227,8 +328,22 @@ class ConfigRepository:
                 params.append(1 if invert_directions else 0)
 
             if updates:
+                allowed_columns = {
+                    "name",
+                    "description",
+                    "model",
+                    "status",
+                    "controller_id",
+                    "last_updated",
+                    "invert_directions",
+                }
+                safe_updates = [u for u in updates if u.split("=")[0].strip() in allowed_columns]
+                if len(safe_updates) != len(updates):
+                    msg = "Invalid column in update_fields for trains"
+                    raise ValueError(msg)
                 params.append(train_id)
-                query = f"UPDATE trains SET {', '.join(updates)} WHERE id = ?"  # nosec B608
+                set_clause = ", ".join(safe_updates)
+                query = f"UPDATE trains SET {set_clause} WHERE id = ?"
                 conn.execute(query, params)
                 conn.commit()
                 logger.info(f"Updated train: {train_id}")

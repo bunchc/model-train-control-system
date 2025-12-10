@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from config.manager import ConfigManager
+from app.config.manager import ConfigManager
 
 
 @pytest.mark.integration()
@@ -24,9 +24,9 @@ class TestConfigIntegration:
         cached_file = temp_config_dir / "edge-controller.yaml"
 
         with (
-            patch("api.client.requests.get") as mock_get,
-            patch("api.client.requests.post") as mock_post,
-            patch("api.client.socket.gethostname") as mock_hostname,
+            patch("app.api.client.requests.get") as mock_get,
+            patch("app.api.client.requests.post") as mock_post,
+            patch("app.api.client.socket.gethostname") as mock_hostname,
         ):
             ping_response = MagicMock()
             ping_response.status_code = 200
@@ -64,15 +64,19 @@ class TestConfigIntegration:
         with cached_file.open("w") as file_handle:
             yaml.safe_dump(mock_runtime_config, file_handle)
 
-        with patch("api.client.requests.get") as mock_get:
+        with patch("app.api.client.requests.get") as mock_get:
             ping_response = MagicMock()
             ping_response.status_code = 200
+
+            # check_controller_exists() calls GET /api/controllers/{uuid}/ping
+            controller_exists_response = MagicMock()
+            controller_exists_response.status_code = 200
 
             config_response = MagicMock()
             config_response.status_code = 200
             config_response.json.return_value = mock_runtime_config
 
-            mock_get.side_effect = [ping_response, config_response]
+            mock_get.side_effect = [ping_response, controller_exists_response, config_response]
 
             manager = ConfigManager(config_file, cached_file)
             service, runtime = manager.initialize()

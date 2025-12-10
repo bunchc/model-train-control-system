@@ -145,6 +145,7 @@ class MQTTClient:
         username: Optional[str] = None,
         password: Optional[str] = None,
         central_api_url: Optional[str] = None,
+        mqtt_client: Optional[mqtt.Client] = None,
     ) -> None:
         """Initialize MQTT client.
 
@@ -165,6 +166,9 @@ class MQTTClient:
             password: Optional MQTT password for authentication
             central_api_url: Optional HTTP URL for status fallback. If provided,
                 status updates will be sent to both MQTT and HTTP endpoints.
+            mqtt_client: Optional pre-configured MQTT client instance. If provided,
+                this client will be used instead of creating a new one. Useful for
+                testing with mock clients.
 
         Note:
             This constructor does not connect to the broker. Call start() to
@@ -178,11 +182,13 @@ class MQTTClient:
         self.command_handler = command_handler
         self.central_api_url = central_api_url
 
-        # Initialize MQTT client
-        self.client = mqtt.Client()
-
-        if username and password:
-            self.client.username_pw_set(username, password)
+        # Use injected client or create default
+        if mqtt_client is not None:
+            self.client = mqtt_client
+        else:
+            self.client = mqtt.Client()
+            if username and password:
+                self.client.username_pw_set(username, password)
 
         # Set callbacks
         self.client.on_connect = self._on_connect

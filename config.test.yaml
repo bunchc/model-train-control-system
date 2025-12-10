@@ -1,0 +1,43 @@
+
+# -----------------------------------------------------------------
+# PLUGIN DEFINITIONS
+#
+# Master library of all available plugins.
+# An edge controller will load any plugin
+# referenced by one of its child trains.
+# -----------------------------------------------------------------
+
+plugins:
+  - name: stepper_hat
+    description: |
+      uGeek Stepper Motor Hat v0.2
+      Uses PWM to control track voltage and drive stepper motors.
+    config:
+      required:
+        - "port"
+      properties:
+        # The I2C address of the board. Default I2C
+        i2c_address: { type: "string", default: "0x6F" }
+        port: { type: integer }
+        default_speed: { type: integer, default: 50 }
+        enabled: { type: boolean, default: true }
+
+edge_controllers:
+  - id: "b7e6a2e2-8c3a-4e2a-9c1a-2f8e4b7e6a2e"
+    address: 192.168.2.214
+    enabled: true
+    name: "Test Controller"
+    description: |
+      Durango Silverton and Silver Streak Trains
+    trains:
+      - name: "Durango Silverton"
+        description: |
+          n Scale model of Durango Silverton from Bachman
+        id: "a1b2c3d4-5678-1234-5678-abcdefabcdef"
+        model: "American Locomotive Works K-28"
+        plugin:
+          # References the name from the plugins list above
+          name: stepper_hat
+          config:
+            port: 1
+            default_speed: 75

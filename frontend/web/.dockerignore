@@ -1,0 +1,21 @@
+# Node.js / React build context
+node_modules/
+dist/
+coverage/
+.nyc_output/
+.cache/
+*.tsbuildinfo
+*.eslintcache
+*.prettiercache
+*.log
+.env
+.env.*
+.vitest/
+test-results/
+test-logs/
+playwright-report/
+playwright-artifacts/
+.DS_Store
+.git/
+.vscode/
+.idea/

@@ -1,3 +1,6 @@
+from typing import Optional
+
+
 """Configuration management API endpoints.
 
 This module provides REST API endpoints for managing system configuration
@@ -13,11 +16,17 @@ Endpoints:
 """
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Body, HTTPException
 
-from app.models.schemas import EdgeController, FullConfig, Plugin, Train, TrainStatus
+from app.models.schemas import (
+    ControllerHeartbeat,
+    EdgeController,
+    FullConfig,
+    Plugin,
+    Train,
+    TrainStatus,
+)
 from app.services.config_manager import ConfigManager
 
 
@@ -62,6 +71,16 @@ def update_train_status(
     current: float = Body(...),
     position: str = Body(...),
 ):
+    if train_id is None:
+        train_id = Body(...)
+    if speed is None:
+        speed = Body(...)
+    if voltage is None:
+        voltage = Body(...)
+    if current is None:
+        current = Body(...)
+    if position is None:
+        position = Body(...)
     """Update the status of a train. Intended for edge-controller or internal use."""
     _get_config().update_train_status(train_id, speed, voltage, current, position)
     logger.info(f"Status updated for train {train_id}")
@@ -233,6 +252,39 @@ def list_trains_for_edge_controller(edge_controller_id: str):
     return list_trains_for_controller(edge_controller_id)
 
 
+@router.post(
+    "/controllers/{controller_id}/heartbeat",
+    status_code=200,
+    summary="Receive controller heartbeat",
+    responses={404: {"description": "Controller not found"}},
+)
+def controller_heartbeat(
+    controller_id: str,
+    heartbeat: ControllerHeartbeat,
+) -> dict[str, str]:
+    """Accept heartbeat from an edge controller.
+
+    Edge controllers should call this endpoint periodically to report
+    their status and telemetry data.
+
+    Args:
+        controller_id: UUID of the edge controller
+        heartbeat: Telemetry data from the controller
+
+    Returns:
+        Status confirmation
+
+    Raises:
+        HTTPException: 404 if controller is not registered
+    """
+    logger.debug(f"POST /controllers/{controller_id}/heartbeat")
+    success = _get_config().update_controller_heartbeat(controller_id, heartbeat)
+    if not success:
+        logger.warning(f"Heartbeat from unknown controller: {controller_id}")
+        raise HTTPException(status_code=404, detail="Controller not found")
+    return {"status": "ok"}
+
+
 @router.get("/controllers/{controller_id}/trains/{train_id}", response_model=Train)
 def get_train_for_controller(controller_id: str, train_id: str):
     """Get a specific train managed by a controller."""
@@ -276,6 +328,10 @@ def register_controller(
     name: str = Body(..., description="Hostname of the edge controller"),
     address: str = Body(..., description="IP address of the edge controller"),
 ):
+    if name is None:
+        name = Body(..., description="Hostname of the edge controller")
+    if address is None:
+        address = Body(..., description="IP address of the edge controller")
     """Register a new edge controller and receive a UUID.
 
     The edge-controller POSTs its hostname as 'name' and IP as 'address'.
@@ -316,9 +372,21 @@ def register_train_for_controller(
     name: str = Body(..., description="Human-readable train name"),
     description: str = Body("", description="Optional train description"),
     model: str = Body("", description="Train model name/number"),
-    plugin: dict = Body(..., description="Plugin configuration"),
+    plugin: Optional[dict] = Body(None, description="Plugin configuration"),  # noqa: B008
     reassign: bool = Body(False, description="If true, reassign train from existing controller"),
 ):
+    if train_id is None:
+        train_id = Body(..., description="Unique UUID for the train")
+    if name is None:
+        name = Body(..., description="Human-readable train name")
+    if description is None:
+        description = Body("", description="Optional train description")
+    if model is None:
+        model = Body("", description="Train model name/number")
+    if plugin is None:
+        plugin = Body(..., description="Plugin configuration")
+    if reassign is None:
+        reassign = Body(False, description="If true, reassign train from existing controller")
     r"""Register a new train for a specific edge controller.
 
     This endpoint is called by edge controllers during initialization to register

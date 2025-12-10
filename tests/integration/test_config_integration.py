@@ -15,7 +15,9 @@ import pytest
 import requests
 
 
-BASE_API_URL = "http://localhost:8000/api"
+import os
+API_PORT = os.getenv("API_PORT", "8000")
+BASE_API_URL = f"http://localhost:{API_PORT}/api"
 TIMEOUT = 10
 
 

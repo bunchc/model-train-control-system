@@ -4,6 +4,7 @@ import { Dashboard } from '@/pages/Dashboard';
 import { TrainDetail } from '@/pages/TrainDetail';
 import { Configuration } from '@/pages/Configuration';
 import { Controllers } from '@/pages/Controllers';
+import { ControllerDetail } from '@/pages/ControllerDetail';
 import { NotFound } from '@/pages/NotFound';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 
@@ -29,6 +30,11 @@ export const router = createBrowserRouter([
   {
     path: '/controllers',
     element: <Controllers />,
+    errorElement: <ErrorBoundary />,
+  },
+  {
+    path: '/controllers/:controllerId',
+    element: <ControllerDetail />,
     errorElement: <ErrorBoundary />,
   },
   {

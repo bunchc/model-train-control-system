@@ -122,6 +122,56 @@ Thumbs.db
 # =============================================================================
 docker-compose.override.yml
 
+*.tar
+*.img
+*.pid
+docker-compose.override.yml
+docker-compose.dev.yml
+
+# =========================
+# Terraform
+# =========================
+.terraform/
+.terraform.lock.hcl
+
+# =========================
+# Ansible
+# =========================
+infra/ansible/secrets/vault.yml
+infra/ansible/.vault_pass
+infra/ansible/*.retry
+infra/ansible/.ansible/
+infra/ansible/facts/
+infra/ansible/logs/
+infra/ansible/inventory/*/hosts.yml.bak
+
+# =========================
+# CI/CD & GitHub Actions
+# =========================
+.github/workflows/*.yml.disabled
+.github/workflows/*.yml.local
+.github/act-config/
+.actrc
+.secrets
+event.json
+
+# =========================
+# Test artifacts (global)
+# =========================
+test-logs/
+test-results/
+*.log
+*.xml
+*.json
+*.html
+
+# =========================
+# Miscellaneous
+# =========================
+tmp/
+.tmp/
+*.orig
+*.rej
 # =============================================================================
 # Testing / Logs
 # =============================================================================

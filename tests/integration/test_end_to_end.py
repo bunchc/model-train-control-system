@@ -1,6 +1,8 @@
 import requests
+import os
 
-BASE_URL = "http://localhost:8000/api/trains"
+API_PORT = os.getenv("API_PORT", "8000")
+BASE_URL = f"http://localhost:{API_PORT}/api/trains"
 
 
 def test_end_to_end_train_control():

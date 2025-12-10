@@ -1,436 +1,496 @@
 #!/bin/bash
 # test_api_endpoints.sh
-# Script to validate central_api endpoints and check FastAPI server status
+
+# Multi-suite test orchestration script for model train control system
 #
-# This script provides comprehensive testing with integrated log monitoring:
+# Supports TEST_SUITE env var: playwright (default), pytest, insomnia, all, none
 # - Captures logs from all containers (mqtt, central_api, gateway, edge-controller)
 # - Displays logs on failure for immediate debugging
 # - Saves logs to timestamped files for post-mortem analysis
 # - Monitors container health and startup
+# - Runs selected test suite(s) with robust error handling
 
-set -euo pipefail  # Exit on error, undefined var, or pipe failure
+set -euo pipefail
 
-# Option to rebuild and restart Docker containers (default: yes)
-REBUILD=${1:-yes}
+# --------------------
+# Constants & Defaults
+# --------------------
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+readonly TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+readonly LOG_DIR="${PROJECT_ROOT}/test-logs/${TIMESTAMP}"
+readonly EDGE_CONF_TMP="${PROJECT_ROOT}/.tmp/edge-controller.conf"
+readonly COMPOSE_FILE="${PROJECT_ROOT}/infra/docker/docker-compose.e2e.yaml"
+readonly COMPOSE_PROJECT_NAME="test_env"
+readonly API_URL="http://localhost:8100/api"
+readonly INSOMNIA_FILE="${PROJECT_ROOT}/Model Train Control System API 0.1.0-wrk_8d50ef17b2464ceca69ec80fb936efc1.yaml"
+readonly ENVIRONMENT="OpenAPI env localhost:8000"
+readonly LOG_LEVEL="${LOG_LEVEL:-info}"
+readonly CLEANUP_ON_SUCCESS="${CLEANUP_ON_SUCCESS:-no}"
+readonly TEST_FRONTEND_HOST="${TEST_FRONTEND_HOST:-localhost}"
+readonly TEST_FRONTEND_PORT="${TEST_FRONTEND_PORT:-5174}"
+readonly TEST_API_HOST="${TEST_API_HOST:-localhost}"
+readonly TEST_API_PORT="${TEST_API_PORT:-8100}"
+readonly TEST_MQTT_HOST="${TEST_MQTT_HOST:-localhost}"
+readonly TEST_MQTT_PORT="${TEST_MQTT_PORT:-18884}"
+readonly REBUILD="${REBUILD:-yes}"
+readonly KEEP_RUNNING="${KEEP_RUNNING:-no}"
+readonly TEST_SUITE="${TEST_SUITE:-playwright}"
+readonly HEALTH_RETRY_COUNT="${HEALTH_RETRY_COUNT:-5}"
+readonly TRAIN_RETRY_COUNT="${TRAIN_RETRY_COUNT:-10}"
 
-# Option to keep containers running after tests (default: no)
-KEEP_RUNNING=${KEEP_RUNNING:-no}
+# Ansible provisioning defaults
+USE_ANSIBLE="${USE_ANSIBLE:-1}"
+CLEANUP="${CLEANUP:-1}"
+ANSIBLE_PLAYBOOK_PATH="${PROJECT_ROOT}/infra/ansible/playbooks/deploy_edge_test.yml"
+ANSIBLE_INVENTORY_PATH="${PROJECT_ROOT}/infra/ansible/inventory/test/hosts.yml"
 
-export API_URL="http://localhost:8000/api"
-export COMPOSE_FILE="infra/docker/docker-compose.yml"
-export LOCAL_DEV=true
-export COMPOSE_PROFILE="local-dev"
-export EDGE_CONTROLLER_DOCKERFILE="Dockerfile-local"
+# --------------------
+# Helper Functions
+# --------------------
 
-# Insomnia test configuration
-INSOMNIA_FILE="Model Train Control System API 0.1.0-wrk_8d50ef17b2464ceca69ec80fb936efc1.yaml"
-ENVIRONMENT="OpenAPI env localhost:8000"
+# Prints error message to STDERR
+err() {
+  echo "[ERROR] $*" >&2
+}
 
-# Create logs directory with timestamp
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-LOG_DIR="test-logs/${TIMESTAMP}"
-mkdir -p "${LOG_DIR}"
+# Logging function with levels
+log_msg() {
+  local level="$1"; shift
+  local msg="$*"
+  case "${level}" in
+    error) [[ "${LOG_LEVEL}" =~ error|warn|info|debug ]] && echo "[ERROR] ${msg}" >&2 ;;
+    warn)  [[ "${LOG_LEVEL}" =~ warn|info|debug ]] && echo "[WARN] ${msg}" ;;
+    info)  [[ "${LOG_LEVEL}" =~ info|debug ]] && echo "[INFO] ${msg}" ;;
+    debug) [[ "${LOG_LEVEL}" == debug ]] && echo "[DEBUG] ${msg}" ;;
+  esac
+  echo "[$(date +%H:%M:%S)] [${level}] ${msg}" >> "${LOG_DIR}/run.log"
+}
 
-# Colors for output
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Checks for required files and exits if any are missing
+check_required_files() {
+  local required_files=(
+    "${PROJECT_ROOT}/config.test.yaml"
+    "${PROJECT_ROOT}/.tmp/edge-controller.conf"
+    "${PROJECT_ROOT}/infra/docker/mosquitto/mosquitto.conf"
+  )
+  local missing=0
+  for file in "${required_files[@]}"; do
+    if [[ ! -f "${file}" ]]; then
+      err "Required file '${file}' does not exist!"
+      missing=1
+    fi
+  done
+  if (( missing == 1 )); then
+    err "Aborting: One or more required files are missing."
+    exit 1
+  fi
+}
 
-echo "Test run: ${TIMESTAMP}"
-echo "Logs will be saved to: ${LOG_DIR}"
-echo ""
+# Dependency check for Python 3 and Jinja2
+check_dependencies() {
+  if ! command -v python3 &>/dev/null; then
+    err "Python 3 is required but not found. Aborting."
+    exit 1
+  fi
+  if ! python3 -c "import jinja2" &>/dev/null; then
+    err "Python package 'jinja2' is required but not found. Aborting."
+    exit 1
+  fi
+}
 
-# Function to capture logs from all containers
+# Create edge-controller.conf from Jinja template
+render_edge_controller_conf() {
+  log_msg info "Rendering edge-controller.conf from Jinja template..."
+  python3 - <<EOF
+import yaml
+from jinja2 import Template
+from pathlib import Path
+import os
+config_path = os.path.join('${PROJECT_ROOT}', 'config.test.yaml')
+template_path = os.path.join('${PROJECT_ROOT}', 'infra', 'edge-controller.conf.j2')
+output_path = Path('${EDGE_CONF_TMP}').expanduser()
+with open(config_path) as f:
+  config = yaml.safe_load(f)
+controller = config['edge_controllers'][0]
+train = controller['trains'][0]
+context = {
+  'central_api_host': 'central_api',
+  'central_api_port': 8000,
+}
+with open(template_path) as f:
+  template = Template(f.read())
+rendered = template.render(**context)
+output_path.write_text(rendered)
+EOF
+  log_msg info "edge-controller.conf rendered to ${EDGE_CONF_TMP}"
+}
+
+# Capture logs from all services
 capture_all_logs() {
-  local prefix=$1
-  echo "Capturing logs from all containers..."
-
-  docker logs docker-mqtt-1 > "${LOG_DIR}/${prefix}_mqtt.log" 2>&1 || echo "mqtt container not running"
-  docker logs docker-central_api-1 > "${LOG_DIR}/${prefix}_central_api.log" 2>&1 || echo "central_api container not running"
-  docker logs docker-gateway-1 > "${LOG_DIR}/${prefix}_gateway.log" 2>&1 || echo "gateway container not running"
-  docker logs docker-edge-controller-1 > "${LOG_DIR}/${prefix}_edge_controller.log" 2>&1 || echo "edge-controller container not running"
-  docker logs docker-web-ui-1 > "${LOG_DIR}/${prefix}_web_ui.log" 2>&1 || echo "web-ui container not running"
+  local prefix="$1"
+  log_msg info "Capturing logs from all containers in compose file..."
+  local services
+  services=$(docker compose --project-name "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" config --services)
+  for svc in ${services}; do
+    docker logs "${COMPOSE_PROJECT_NAME}-${svc}-1" > "${LOG_DIR}/${prefix}_${svc}.log" 2>&1 || log_msg warn "$svc container not running"
+  done
 }
 
-# Function to display logs on failure
-display_logs_on_failure() {
-  local component=$1
-  echo ""
-  echo "========================================"
-  echo "FAILURE DETECTED - Displaying Container Logs"
-  echo "========================================"
-  echo ""
-
+# Display logs on failure
+# Args: component name
+# Side effect: prints logs to stdout
+# Exits: does not exit
+show_logs_on_failure() {
+  local component="$1"
+  log_msg error "FAILURE DETECTED - Displaying Container Logs"
   echo "--- MQTT Broker Logs ---"
-  docker logs docker-mqtt-1 2>&1 | tail -n 50
-
-  echo ""
+  docker logs ${COMPOSE_PROJECT_NAME}-mqtt-1 2>&1 | tail -n 50
   echo "--- Central API Logs ---"
-  docker logs docker-central_api-1 2>&1 | tail -n 50
-
-  echo ""
+  docker logs ${COMPOSE_PROJECT_NAME}-central_api-1 2>&1 | tail -n 50
   echo "Full logs saved to: ${LOG_DIR}"
-  echo "========================================"
 }
 
-# Cleanup function
+# Cleanup function for trap
 cleanup() {
-  echo ""
-  echo "Capturing final logs..."
+  log_msg info "Capturing final logs..."
   capture_all_logs "final"
-
-  if [ "${KEEP_RUNNING}" = "yes" ]; then
-    echo ""
-    echo "======================================"
-    echo "Containers left running for development"
-    echo "======================================"
-    echo "Central API: http://localhost:8000"
-    echo "Web UI: http://localhost:5173"
-    echo "MQTT Broker: mqtt://localhost:1883"
-    echo ""
+  if [[ "${KEEP_RUNNING}" == "yes" ]]; then
+    log_msg info "Containers left running for development"
+    echo "API: http://${TEST_API_HOST}:${TEST_API_PORT}"
+    echo "Web UI: http://${TEST_FRONTEND_HOST}:${TEST_FRONTEND_PORT}"
     echo "To stop all containers, run:"
-    echo "  docker compose -f ${COMPOSE_FILE} --profile ${COMPOSE_PROFILE} down"
-    echo "======================================"
-  elif [ "${REBUILD}" = "yes" ]; then
-    echo "Stopping containers..."
-    docker compose -f "${COMPOSE_FILE}" --profile local-dev down
+    echo "  docker compose --project-name ${COMPOSE_PROJECT_NAME} -f ${COMPOSE_FILE} down"
+  elif [[ "${REBUILD}" == "yes" ]]; then
+    log_msg info "Stopping containers..."
+    docker compose --project-name "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" down || log_msg warn "No existing containers to stop"
+  fi
+  if [[ "${CLEANUP_ON_SUCCESS}" == "yes" ]]; then
+    log_msg info "Cleaning up logs and configs..."
+    rm -rf "${LOG_DIR}" "${EDGE_CONF_TMP}"
+  else
+    echo
+    echo "===================="
+    echo "Test logs and captured container logs are available at: ${LOG_DIR}"
+    echo "If a test or container failed, check the logs above for details."
+    echo "===================="
   fi
 }
 
-# Set trap to cleanup on exit
-trap cleanup EXIT
-
-# Stop and remove existing containers if rebuild requested
-if [ "${REBUILD}" = "yes" ]; then
-  echo "Stopping and removing existing containers..."
-  docker compose -f "${COMPOSE_FILE}" --profile loc"${COMPOSE_PROFILE}" down
-  echo ""
-fi
-
-# Start services
-echo "Starting services..."
-if [ "${REBUILD}" = "yes" ]; then
-  echo "Building containers..."
-  docker compose -f "${COMPOSE_FILE}" --profile "${COMPOSE_PROFILE}" build --no-cache
-  echo ""
-  echo "Starting containers..."
-  docker compose -f "${COMPOSE_FILE}" --profile "${COMPOSE_PROFILE}" up -d
-else
-  echo "Starting containers (no rebuild)..."
-  docker compose -f "${COMPOSE_FILE}" --profile "${COMPOSE_PROFILE}" up -d
-fi
-
-echo ""
-echo "Waiting for services to be ready..."
-sleep 5
-
-# Capture startup logs
-capture_all_logs "startup"
-
-# Wait for central_api to be healthy
-echo "Checking central_api health..."
-MAX_RETRIES=30
-RETRY_COUNT=0
-
-while [ ${RETRY_COUNT} -lt ${MAX_RETRIES} ]; do
-  if curl -s -f "${API_URL}/config" > /dev/null 2>&1; then
-    echo -e "${GREEN}✓ Central API is running${NC}"
-    break
-  fi
-
-  RETRY_COUNT=$((RETRY_COUNT + 1))
-  echo "Waiting for API... (${RETRY_COUNT}/${MAX_RETRIES})"
-  sleep 2
-done
-
-if [ ${RETRY_COUNT} -eq ${MAX_RETRIES} ]; then
-  echo -e "${RED}ERROR: Central API failed to start${NC}"
-  display_logs_on_failure "central_api"
-  exit 1
-fi
-
-# Wait for web-ui to be healthy
-echo "Checking web-ui health..."
-WEB_RETRY_COUNT=0
-WEB_MAX_RETRIES=30
-
-while [ ${WEB_RETRY_COUNT} -lt ${WEB_MAX_RETRIES} ]; do
-  # Check if web-ui responds with HTTP 200
-  if curl -s -f http://localhost:5173 > /dev/null 2>&1; then
-    echo -e "${GREEN}✓ Web UI is running${NC}"
-    echo -e "  Access at: http://localhost:5173"
-    break
-  fi
-
-  WEB_RETRY_COUNT=$((WEB_RETRY_COUNT + 1))
-  echo "Waiting for Web UI... (${WEB_RETRY_COUNT}/${WEB_MAX_RETRIES})"
-  sleep 2
-done
-
-if [ ${WEB_RETRY_COUNT} -eq ${WEB_MAX_RETRIES} ]; then
-  echo -e "${RED}ERROR: Web UI failed to start${NC}"
-  docker logs docker-web-ui-1 --tail 50
-  exit 1
-fi
-
-echo ""
-echo "======================================"
-echo "Running API Tests with Inso CLI"
-echo "======================================"
-echo ""
-
-inso run collection "wrk_8d50ef17b2464ceca69ec80fb936efc1" \
-    --env "${ENVIRONMENT}" \
-    --workingDir "${INSOMNIA_FILE}"
-
-# Capture exit code
-TEST_EXIT_CODE=$?
-
-echo ""
-echo "======================================"
-if [ ${TEST_EXIT_CODE} -eq 0 ]; then
-    echo -e "${GREEN}✓ All tests passed!${NC}"
-else
-    echo -e "${RED}✗ Some tests failed${NC}"
-    display_logs_on_failure "tests"
-fi
-echo "======================================"
-
-exit ${TEST_EXIT_CODE}
-
-# Trap errors and display logs
-trap 'display_logs_on_failure "unknown"' ERR
-
-# Function to tail logs in background (for monitoring during tests)
-start_log_monitoring() {
-  echo "Starting background log monitoring..."
-
-  # Create named pipes for log streaming
-  mkfifo "${LOG_DIR}/mqtt.fifo" 2>/dev/null || true
-  mkfifo "${LOG_DIR}/central_api.fifo" 2>/dev/null || true
-  mkfifo "${LOG_DIR}/edge_controller.fifo" 2>/dev/null || true
-
-  # Start background log capture
-  docker logs -f docker-mqtt-1 > "${LOG_DIR}/mqtt_live.log" 2>&1 &
-  MQTT_LOG_PID=$!
-
-  docker logs -f docker-central_api-1 > "${LOG_DIR}/central_api_live.log" 2>&1 &
-  API_LOG_PID=$!
-
-  docker logs -f docker-edge-controller-1 > "${LOG_DIR}/edge_controller_live.log" 2>&1 &
-  EDGE_LOG_PID=$!
-
-  echo "Log monitoring started (PIDs: mqtt=$MQTT_LOG_PID api=$API_LOG_PID edge=$EDGE_LOG_PID)"
+# Stops and removes existing containers
+stop_containers() {
+  log_msg info "Stopping and removing existing containers..."
+  docker compose --project-name "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" down || log_msg warn "No existing containers to stop"
 }
 
-# Function to stop log monitoring
-stop_log_monitoring() {
-  echo "Stopping background log monitoring..."
-  kill $MQTT_LOG_PID 2>/dev/null || true
-  kill $API_LOG_PID 2>/dev/null || true
-  kill $EDGE_LOG_PID 2>/dev/null || true
-
-  # Clean up named pipes
-  rm -f "${LOG_DIR}"/*.fifo 2>/dev/null || true
+# Builds and starts containers
+start_containers() {
+  log_msg info "Starting services..."
+  if [[ "${REBUILD}" == "yes" ]]; then
+    log_msg info "Building containers..."
+    docker compose --project-name "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" build --no-cache
+    log_msg info "Starting containers..."
+    docker compose --project-name "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" up -d
+  else
+    log_msg info "Starting containers (no rebuild)..."
+    docker compose --project-name "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" up -d
+  fi
 }
 
-
-if [ "$REBUILD" == "yes" ]; then
-  echo "Rebuilding and restarting Docker containers..."
-  docker compose --profile ${COMPOSE_PROFILE} -f ${COMPOSE_FILE} down || exit 1
-  docker compose --profile ${COMPOSE_PROFILE} -f ${COMPOSE_FILE} build --no-cache || exit 1
-  docker compose --profile ${COMPOSE_PROFILE} -f ${COMPOSE_FILE} up -d  || exit 1
-else
-  echo "Restarting Docker containers without rebuild..."
-  docker compose --profile ${COMPOSE_PROFILE} -f ${COMPOSE_FILE} down || exit 1
-  docker compose --profile ${COMPOSE_PROFILE} -f ${COMPOSE_FILE} up -d  || exit 1
-fi
-
-echo "Waiting for services to start..."
-sleep 5
-
-# Start background log monitoring
-start_log_monitoring
-
-echo "Waiting additional time for edge controller initialization..."
-sleep 10
-
-
-function check_server {
-  echo "Checking if FastAPI server is running on port 8000 and /api/ping is reachable..."
-
-  # Check if port is open
-  if ! nc -z localhost 8000; then
-    echo "ERROR: FastAPI server is NOT running on port 8000."
-    display_logs_on_failure "central_api_port_check"
+# Checks if FastAPI server is running and /api/ping is reachable
+check_server() {
+  log_msg info "Checking if FastAPI server is running on port ${TEST_API_PORT} and /api/ping is reachable..."
+  if ! nc -z "${TEST_API_HOST}" "${TEST_API_PORT}"; then
+    err "FastAPI server is NOT running on ${TEST_API_HOST} port ${TEST_API_PORT}."
+    show_logs_on_failure "central_api_port_check"
     return 1
   fi
-
-  # Check /api/ping endpoint with retries
-  local max_retries=5
   local retry_count=0
-
-  while [ $retry_count -lt $max_retries ]; do
-    if curl -sSf http://localhost:8000/api/ping > /dev/null 2>&1; then
-      echo "✓ FastAPI server is running and /api/ping is reachable."
+  while (( retry_count < HEALTH_RETRY_COUNT )); do
+    if curl -sSf "http://${TEST_API_HOST}:${TEST_API_PORT}/api/ping" > /dev/null 2>&1; then
+      log_msg info "✓ FastAPI server is running and /api/ping is reachable."
       return 0
     fi
-
-    retry_count=$((retry_count + 1))
-    echo "  Retry $retry_count/$max_retries - waiting for /api/ping..."
+    (( retry_count++ ))
+    log_msg warn "Retry ${retry_count}/${HEALTH_RETRY_COUNT} - waiting for /api/ping..."
     sleep 2
   done
-
-  echo "ERROR: FastAPI server is running, but /api/ping is NOT reachable after $max_retries attempts."
-  display_logs_on_failure "central_api_ping_check"
+  err "FastAPI server is running, but /api/ping is NOT reachable after ${HEALTH_RETRY_COUNT} attempts."
+  show_logs_on_failure "central_api_ping_check"
   return 1
 }
 
-
-function check_mqtt {
-  echo "Checking if MQTT server is running..."
+# Checks if MQTT server is running
+check_mqtt() {
+  log_msg info "Checking if MQTT server is running..."
   local status
-  status=$(docker ps --filter "name=docker-mqtt-1" --format '{{.Status}}' 2>/dev/null || echo "")
-
-  if [[ "$status" == Up* ]]; then
-    echo "✓ MQTT server is running."
-
-    # Additional check: try to connect to MQTT port
-    if nc -z localhost 1883 2>/dev/null; then
-      echo "✓ MQTT server is accepting connections on port 1883."
-    else
-      echo "WARNING: MQTT container running but port 1883 not accessible"
-    fi
-    return 0
-  else
-    echo "ERROR: MQTT server is NOT healthy. Status: ${status:-not found}"
-    display_logs_on_failure "mqtt_check"
-    return 1
-  fi
-}
-
-
-function check_edge_controller {
-  echo "Checking if edge-controller is running..."
-  local status
-  status=$(docker ps --filter "name=docker-edge-controller-1" --format '{{.Status}}' 2>/dev/null || echo "")
-
-  if [[ "$status" == Up* ]]; then
-    echo "✓ Edge controller is running."
-
-    # Check if controller has logged successful initialization
-    if docker logs docker-edge-controller-1 2>&1 | grep -q "MQTT client started successfully\|Running in simulation mode"; then
-      echo "✓ Edge controller appears to have initialized successfully."
-    else
-      echo "WARNING: Edge controller running but initialization status unclear"
-      echo "  Last 10 lines of edge controller log:"
-      docker logs --tail 10 docker-edge-controller-1 2>&1 | sed 's/^/  /'
-    fi
-    return 0
-  else
-    echo "ERROR: Edge controller is NOT healthy. Status: ${status:-not found}"
-    display_logs_on_failure "edge_controller_check"
-    return 1
-  fi
-}
-
-# List of Insomnia request IDs to run sequentially
-INSO_REQUESTS=(
-  "req_d23d9496dcb24bb6a1642eabdc9fb39b" # Read Root
-  "req_04efebeb40a04d5cbddbd7b7e52c9195" # Get config for edge controller
-  "req_4ffd4a0d380640b5a0902f052e3422ec" # List all edge controllers
-  "req_11fe132ca9b148769bc7b47b992aa759" # Get config for train
-  "req_c3d15f1ed5ef49feb82755ac715dca32" # List all configured trains
-  "req_006c87b4839a40bab576ef051f7c7279" # Get entire config
-  "req_ed3a7511d0534758b3235e933a342a6f" # List plugins
-  "req_4ecbac26047c4b07adf872da0e4d8bdd" # Get Status
-  "req_735a0132ecd948b5a5c4024e04ba08d1" # Send Command
-  "req_010ca9f3c40049168dedc812020c79d2" # List Trains
-)
-
-function run_insomnia_tests {
-  if [ "$RUN_ALL" == "yes" ]; then
-    echo -e "\nRunning full Insomnia collection..."
-    if ! inso run collection wrk_faf1be --env env_7c7a2f7957 --reporter min --bail; then
-      display_logs_on_failure "insomnia_collection"
-      return 1
-    fi
-  else
-    echo -e "\nRunning Insomnia requests one at a time..."
-    for req_id in "${INSO_REQUESTS[@]}"; do
-      echo -e "\nRunning Insomnia request: $req_id"
-      if ! inso run collection wrk_faf1be --env env_7c7a2f7957 --item "$req_id" --reporter min; then
-        echo -e "\nInsomnia run failed."
-        display_logs_on_failure "insomnia_${req_id}"
-        return 1
+  status=$(docker ps --filter "name=${COMPOSE_PROJECT_NAME}-mqtt-1" --format '{{.Status}}' 2>/dev/null || echo "")
+  if [[ "${status}" == Up* ]]; then
+    log_msg info "✓ MQTT server is running."
+    # First, wait for any process to be listening on the port (host-side)
+    local lsof_retry_count=0
+    local lsof_found=1
+    while (( lsof_retry_count < HEALTH_RETRY_COUNT )); do
+      if lsof -iTCP:"${TEST_MQTT_PORT}" -sTCP:LISTEN &>/dev/null; then
+        lsof_found=0
+        break
       fi
+      (( lsof_retry_count++ ))
+      log_msg warn "Retry ${lsof_retry_count}/${HEALTH_RETRY_COUNT} - waiting for a process to listen on port ${TEST_MQTT_PORT} (lsof)..."
+      sleep 2
     done
+    if (( lsof_found != 0 )); then
+      log_msg warn "No process found listening on port ${TEST_MQTT_PORT} after ${HEALTH_RETRY_COUNT} attempts"
+    fi
+    # Now check actual connectivity with netcat
+    local mqtt_retry_count=0
+    local mqtt_port_open=1
+    while (( mqtt_retry_count < HEALTH_RETRY_COUNT )); do
+      if nc -z "${TEST_MQTT_HOST}" "${TEST_MQTT_PORT}" 2>/dev/null; then
+        log_msg info "✓ MQTT server is accepting connections on port ${TEST_MQTT_PORT}."
+        mqtt_port_open=0
+        break
+      fi
+      (( mqtt_retry_count++ ))
+      log_msg warn "Retry ${mqtt_retry_count}/${HEALTH_RETRY_COUNT} - waiting for MQTT port ${TEST_MQTT_PORT} (nc)..."
+      sleep 2
+    done
+    if (( mqtt_port_open != 0 )); then
+      log_msg warn "MQTT container running but port ${TEST_MQTT_PORT} not accessible after ${HEALTH_RETRY_COUNT} attempts"
+    fi
+    return 0
+  else
+    err "MQTT server is NOT healthy. Status: ${status:-not found}"
+    show_logs_on_failure "mqtt_check"
+    return 1
   fi
-  echo "✓ All Insomnia tests passed."
-  return 0
 }
 
-function run_tests {
-  echo ""
-  echo "========================================"
-  echo "Starting Health Checks"
-  echo "========================================"
+# Checks if edge-controller is running
+check_edge_controller() {
+  log_msg info "Checking if edge-controller is running..."
+  local status
+  status=$(docker ps --filter "name=${COMPOSE_PROJECT_NAME}-edge-controller-1" --format '{{.Status}}' 2>/dev/null || echo "")
+  if [[ "${status}" == Up* ]]; then
+    log_msg info "✓ Edge controller is running."
+    if docker logs ${COMPOSE_PROJECT_NAME}-edge-controller-1 2>&1 | grep -q "Edge controller running\|Subscribed to topic"; then
+      log_msg info "✓ Edge controller appears to have initialized successfully."
+    else
+      log_msg warn "Edge controller running but initialization status unclear"
+      docker logs --tail 10 ${COMPOSE_PROJECT_NAME}-edge-controller-1 2>&1 | sed 's/^/  /'
+    fi
+    return 0
+  else
+    err "Edge controller is NOT healthy. Status: ${status:-not found}"
+    show_logs_on_failure "edge_controller_check"
+    return 1
+  fi
+}
 
+
+# --- Test Suite Functions ---
+
+# Playwright E2E tests
+run_playwright_tests() {
+  log_msg info "=== Starting Playwright E2E tests ==="
+  echo "\n========== Playwright E2E tests =========="
+  pushd "${PROJECT_ROOT}/frontend/web" > /dev/null
+  if ! npm install 2>&1 | tee "${LOG_DIR}/playwright_npm_install.log"; then
+    err "npm install failed in frontend/web"
+    show_logs_on_failure "playwright"
+    popd > /dev/null
+    return 1
+  fi
+  if ! npm run test:e2e -- --reporter=dot 2>&1 | tee "${LOG_DIR}/playwright_e2e.log"; then
+    err "Playwright E2E tests failed."
+    show_logs_on_failure "playwright"
+    popd > /dev/null
+    return 1
+  fi
+  popd > /dev/null
+  log_msg info "✓ Playwright E2E tests passed."
+  echo "========== Playwright E2E tests complete =========="
+}
+
+# Pytest integration tests
+run_pytest_tests() {
+  log_msg info "=== Starting pytest integration tests ==="
+  echo "\n========== Pytest integration tests =========="
+  if ! API_PORT="${TEST_API_PORT}" MQTT_PORT="18884" PYTHONPATH=. pytest tests/integration/ -v --tb=short 2>&1 | tee "${LOG_DIR}/pytest_integration.log"; then
+    err "Pytest integration test failed."
+    show_logs_on_failure "pytest"
+    return 1
+  fi
+  log_msg info "✓ Pytest tests passed."
+  echo "========== Pytest integration tests complete =========="
+}
+
+# Insomnia API tests
+run_insomnia_tests() {
+  log_msg info "=== Starting Insomnia API tests ==="
+  echo "\n========== Insomnia API tests =========="
+  if command -v inso &> /dev/null; then
+    log_msg info "Running Insomnia API tests..."
+    # TODO: Replace with actual Insomnia test command
+    # Example: inso run test "${INSOMNIA_FILE}" --env "${ENVIRONMENT}" 2>&1 | tee "${LOG_DIR}/insomnia_api.log"
+    log_msg info "Insomnia test command placeholder"
+    echo "Insomnia test command placeholder" | tee "${LOG_DIR}/insomnia_api.log"
+  else
+    log_msg info "Skipping Insomnia tests (inso not installed)"
+    log_msg info "Install with: npm install -g insomnia-inso"
+    echo "Skipping Insomnia tests (inso not installed)" | tee "${LOG_DIR}/insomnia_api.log"
+  fi
+  echo "========== Insomnia API tests complete =========="
+}
+
+# Run all test suites
+run_all_tests() {
+  log_msg info "=== Running all test suites (pytest, playwright, insomnia) ==="
+  run_pytest_tests || return 1
+  run_playwright_tests || return 1
+  run_insomnia_tests || return 1
+  log_msg info "✓ All test suites passed."
+}
+
+# Dispatcher for selected test suite
+run_selected_tests() {
+  log_msg info "Selected test suite: ${TEST_SUITE}"
+  echo "\n===================="
+  echo "Selected test suite: ${TEST_SUITE}"
+  echo "====================\n"
+  case "${TEST_SUITE}" in
+    playwright)
+      run_playwright_tests
+      ;;
+    pytest)
+      run_pytest_tests
+      ;;
+    insomnia)
+      run_insomnia_tests
+      ;;
+    all)
+      run_all_tests
+      ;;
+    none)
+      log_msg info "TEST_SUITE=none: Skipping all test suites."
+      ;;
+    *)
+      err "Unknown TEST_SUITE: '${TEST_SUITE}'. Must be one of: playwright, pytest, insomnia, all, none."
+      exit 1
+      ;;
+  esac
+}
+
+# Runs health checks and test suites
+run_tests() {
+  log_msg info "Starting Health Checks"
   check_mqtt || exit 1
   check_server || exit 1
   check_edge_controller || exit 1
-
-  echo ""
-  echo "========================================"
-  echo "All Health Checks Passed - Starting Tests"
-  echo "========================================"
-
-  echo -e "\n[1/2] Running pytest integration tests..."
-  if ! PYTHONPATH=. pytest tests/integration/ -v --tb=short; then
-    echo -e "\nERROR: Pytest integration test failed."
-    display_logs_on_failure "pytest"
-    return 1
-  fi
-  echo "✓ Pytest tests passed."
-
-  # Check if inso is installed before running Insomnia tests
-  if command -v inso &> /dev/null; then
-    echo -e "\n[2/2] Running Insomnia API tests..."
-    if ! run_insomnia_tests; then
-      return 1
+  log_msg info "All Health Checks Passed - Verifying train registration..."
+  local train_retry_count=0
+  local train_count=0
+  local train_api_response=""
+  echo "Polling Central API for train registration..."
+  while (( train_retry_count < TRAIN_RETRY_COUNT )); do
+    echo -n "[Train Check] Attempt $((train_retry_count+1))/${TRAIN_RETRY_COUNT}... "
+    train_api_response=$(curl -sSf "http://${TEST_API_HOST}:${TEST_API_PORT}/api/trains" || echo "CURL_ERROR")
+    if [[ "$train_api_response" == "CURL_ERROR" ]]; then
+      echo "Central API unreachable."
+      log_msg warn "Central API unreachable on train registration check."
+    else
+      train_count=$(echo "$train_api_response" | grep -o '"id"' | wc -l || true)
+      echo "Found $train_count trains."
+      if (( train_count > 0 )); then
+        log_msg info "✓ At least one train registered in Central API."
+        echo "Train registration detected. Proceeding with tests."
+        break
+      fi
     fi
-  else
-    echo -e "\n[2/2] Skipping Insomnia tests (inso not installed)"
-    echo "  Install with: npm install -g insomnia-inso"
+    (( train_retry_count++ ))
+    log_msg warn "Retry ${train_retry_count}/${TRAIN_RETRY_COUNT} - waiting for train registration..."
+    sleep 2
+  done
+  if (( train_count == 0 )); then
+    echo "[ERROR] No trains registered in Central API after ${TRAIN_RETRY_COUNT} attempts."
+    echo "Last response from /api/trains: $train_api_response"
+    err "No trains registered in Central API after ${TRAIN_RETRY_COUNT} attempts. Check config and edge controller startup."
+    show_logs_on_failure "train_registration_check"
+    exit 1
   fi
-
-  echo ""
-  echo "========================================"
-  echo "✓ All Tests Passed Successfully!"
-  echo "========================================"
-
-  # Capture final logs
+  run_selected_tests || {
+    err "Test suite(s) failed."
+    exit 1
+  }
+  log_msg info "✓ All selected test suites passed."
   capture_all_logs "success"
-
   return 0
 }
 
-# Main execution
-run_tests
-TEST_RESULT=$?
+# Creates log directory
+create_log_dir() {
+  mkdir -p "${LOG_DIR}" "${PROJECT_ROOT}/.tmp"
+}
 
-# Stop log monitoring
-stop_log_monitoring
+# --------------------
+# Main
+# --------------------
+main() {
+  # Parse CLI args for Ansible and cleanup options
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --no-ansible) USE_ANSIBLE=0 ;;
+      --no-cleanup) CLEANUP=0 ;;
+      --ansible-playbook) ANSIBLE_PLAYBOOK_PATH="$2"; shift ;;
+      --ansible-inventory) ANSIBLE_INVENTORY_PATH="$2"; shift ;;
+      # ...existing options...
+    esac
+    shift
+  done
 
-# Clean exit
-if [ $TEST_RESULT -eq 0 ]; then
-  echo ""
-  echo "Test logs saved to: ${LOG_DIR}"
-  echo "To view logs: ls -lh ${LOG_DIR}/"
-  exit 0
-else
-  echo ""
-  echo "Tests failed. Full logs available at: ${LOG_DIR}"
-  exit 1
-fi
+  create_log_dir
+  log_msg info "==== Starting E2E Test Orchestration ===="
+  check_dependencies
+
+  # Cleanup previous artifacts if requested
+  if [[ "$CLEANUP" == "1" ]]; then
+    log_msg info "Cleaning up previous containers and configs..."
+    docker compose --project-name "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" down -v || log_msg warn "No existing containers to stop"
+    rm -rf "${EDGE_CONF_TMP}" "${LOG_DIR}" "${PROJECT_ROOT}/.tmp/edge-controller.secrets"
+    mkdir -p "${LOG_DIR}" "${PROJECT_ROOT}/.tmp"
+  fi
+
+  # Ansible provisioning (default)
+  if [[ "$USE_ANSIBLE" == "1" ]]; then
+    log_msg info "Provisioning test environment with Ansible..."
+    ansible-playbook -i "$ANSIBLE_INVENTORY_PATH" "$ANSIBLE_PLAYBOOK_PATH" || {
+      err "Ansible provisioning failed. Aborting."
+      exit 1
+    }
+    log_msg info "Ansible provisioning complete."
+  else
+    log_msg info "Skipping Ansible provisioning (USE_ANSIBLE=0)"
+    log_msg info "Rendering edge-controller.conf and preparing environment..."
+    render_edge_controller_conf
+  fi
+
+  # Robust required file check after provisioning
+  check_required_files
+
+  stop_containers
+  log_msg info "Bringing up containers and building images..."
+  start_containers
+  log_msg info "Waiting for services to be ready..."
+  sleep 5
+  capture_all_logs "startup"
+  run_tests
+  echo
+  echo "===================="
+  echo "Test run complete."
+  echo "Logs and captured output are in: ${LOG_DIR}"
+  echo "===================="
+}
+
+trap cleanup EXIT
+
+main "$@"

@@ -100,12 +100,14 @@ export const useUpdateTrain = (): UseMutationResult<
 
 /**
  * Hook: Fetch all edge controllers
+ * Polls every 10 seconds to keep status indicators current
  */
 export const useControllers = (): UseQueryResult<EdgeController[], Error> => {
   return useQuery({
     queryKey: queryKeys.controllers,
     queryFn: getControllers,
-    staleTime: 10000,
+    refetchInterval: 10000, // Poll every 10 seconds for status updates
+    staleTime: 5000,        // Consider stale after 5 seconds
   });
 };
 

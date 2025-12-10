@@ -50,7 +50,11 @@ Your goal is to maintain a production-ready, secure, and well-documented edge co
 
 ### 1. Python Modernization
 
-* **Target:** Python 3.10+.
+* **Target:** Python 3.9+ (edge-controllers), Python 3.10+ (central_api).
+* **Type Hints (Python 3.9 compatibility):**
+  * Use `Optional[str]` instead of `str | None`
+  * Use `Union[int, str]` instead of `int | str`
+  * Use `list[int]` and `dict[str, Any]` (these work in 3.9)
 * **Path Handling:** ALWAYS use `pathlib.Path`. NEVER use `os.path`.
 * **Strings:** ALWAYS use f-strings. NEVER use `%` or `.format()`.
 * **Config:** Use `pydantic` settings or `dataclasses`. No raw dictionaries for config.
@@ -91,3 +95,4 @@ Your goal is to maintain a production-ready, secure, and well-documented edge co
 
 ```json
 { "action": "setSpeed", "speed": 50 }
+```
