@@ -77,9 +77,15 @@
     # Pull Latest Image (once for all motors)
     # ========================================================================
 
+
     - name: Check if we should build locally
       set_fact:
         should_build: "{{ build_edge_image | default(false) }}"
+
+    - name: Check if we should use build cache
+      set_fact:
+        build_nocache: "{{ build_edge_nocache | default(false) }}"
+      when: should_build | bool
 
     - name: Copy edge controller source to RPi (if building)
       synchronize:
@@ -101,6 +107,7 @@
         build:
           path: /tmp/edge-controller-build
           dockerfile: Dockerfile
+          nocache: "{{ build_nocache | bool }}"
         force_source: yes
       when: should_build | bool
       register: build_result
