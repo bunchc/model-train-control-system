@@ -77,6 +77,33 @@ class TestConfigRepository:
         assert controller["name"] == "new-controller"
         assert controller["address"] == "192.168.1.200"
         assert controller["enabled"] == 1
+        # Timestamp fields should be set
+        assert controller["first_seen"] is not None
+        assert controller["last_seen"] is not None
+        assert controller["status"] == "online"
+
+    def test_update_controller_heartbeat_timestamps(
+        self, temp_db_path: Path, temp_schema_path: Path
+    ) -> None:
+        """Test that update_controller_heartbeat updates last_seen and preserves first_seen."""
+        repo = ConfigRepository(temp_db_path, temp_schema_path)
+        repo.add_edge_controller("hb-unit-001", "unit-heartbeat", "192.168.1.201")
+        controller_before = repo.get_edge_controller("hb-unit-001")
+        first_seen_before = controller_before["first_seen"]
+        last_seen_before = controller_before["last_seen"]
+        assert first_seen_before is not None
+        assert last_seen_before is not None
+        # Simulate heartbeat
+        import time
+
+        time.sleep(1)
+        result = repo.update_controller_heartbeat("hb-unit-001")
+        assert result is True
+        controller_after = repo.get_edge_controller("hb-unit-001")
+        assert controller_after["first_seen"] == first_seen_before
+        assert controller_after["last_seen"] is not None
+        assert controller_after["last_seen"] != last_seen_before
+        assert controller_after["status"] == "online"
 
     def test_update_edge_controller_name(self, populated_db: Path, temp_schema_path: Path) -> None:
         """Test updating edge controller name."""
@@ -109,7 +136,8 @@ class TestConfigRepository:
         repo = ConfigRepository(populated_db, temp_schema_path)
         controller_id = "550e8400-e29b-41d4-a716-446655440000"
 
-        repo.update_edge_controller(controller_id, enabled=False)
+        # Use integer for enabled field as expected by repository logic
+        repo.update_edge_controller(controller_id, enabled=0)
 
         controller = repo.get_edge_controller(controller_id)
         assert controller is not None
