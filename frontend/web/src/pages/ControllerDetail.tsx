@@ -52,10 +52,14 @@ export const ControllerDetail: React.FC = () => {
     { label: 'ID', value: controller.id, mono: true, 'data-testid': `controller-id-${controller.id}` },
     { label: 'Address', value: controller.address, 'data-testid': `controller-address-${controller.id}` },
     { label: 'Version', value: controller.version },
-    {
-      label: 'Last Seen',
-      value: controller.last_seen ? formatRelativeTime(controller.last_seen) : 'Never',
-    },
+      {
+        label: 'First Seen',
+        value: controller.first_seen ? formatRelativeTime(controller.first_seen) : 'Never',
+      },
+      {
+        label: 'Last Seen',
+        value: controller.last_seen ? formatRelativeTime(controller.last_seen) : 'Never',
+      },
   ];
 
   // Prepare InfoCard items for System Info section
