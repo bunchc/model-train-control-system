@@ -30,7 +30,8 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-from ..api.client import APIRegistrationError, CentralAPIClient
+from edge_controllers.pi_template.app.api.client import APIRegistrationError, CentralAPIClient
+
 from .loader import ConfigLoader, ConfigLoadError
 
 
@@ -280,11 +281,12 @@ class ConfigManager:
                 # Persist to disk so we have fallback if API becomes unavailable
                 self.loader.save_runtime_config(fresh_config)
                 logger.info("Runtime config updated from central API")
-                return self._service_config, fresh_config
             except ConfigLoadError:
                 # Save failed but we have fresh config in memory - continue anyway
                 logger.exception("Failed to save fresh config")
                 # Fall through to cached config check
+            else:
+                return self._service_config, fresh_config
 
         # Download failed - validate cached config before using it
         # Cached config may be stale but is better than not starting
@@ -297,7 +299,7 @@ class ConfigManager:
         logger.warning("Cached config incomplete, running without train config")
         return self._service_config, None
 
-    def _register_new_controller(
+    def _register_new_controller(  # noqa: PLR0912
         self,
     ) -> tuple[dict[str, Any], Optional[dict[str, Any]]]:
         """Register as new controller with central API.
@@ -338,54 +340,86 @@ class ConfigManager:
 
         # Step 1: Register with Central API to get UUID
         # Sends hostname and IP address to help admin identify this controller
+        # Pass the loaded config dict to register_controller for config-driven naming
         try:
-            controller_uuid = self.api_client.register_controller()
+            # Use the service config if available, else None
+            controller_uuid = self.api_client.register_controller(self._service_config)
         except APIRegistrationError as exc:
             # Registration failed - terminal error, cannot proceed without UUID
             raise ConfigurationError(f"Failed to register with central API: {exc}") from exc
 
-        # Step 1.5: Register train if environment variables are set
-        # This allows the controller to self-register trains from deployment config
-        train_id = os.getenv("TRAIN_ID")
-        train_name = os.getenv("TRAIN_NAME")
-        motor_port = os.getenv("MOTOR_PORT")
-        hardware_type = os.getenv("HARDWARE_TYPE", "dc_motor")
-
-        if train_id and train_name and motor_port:
-            logger.info(
-                f"Train configuration found in environment: id={train_id}, "
-                f"name={train_name}, motor_port={motor_port}"
-            )
-
-            # Build train registration payload
-            train_data = {
-                "train_id": train_id,
-                "name": train_name,
-                "plugin": {
-                    "name": "adafruit_dcmotor_hat",
-                    "config": {"motor_port": int(motor_port)},
-                },
-                "description": f"Train on motor port M{motor_port}",
-                "model": "DC Motor",
-            }
-
-            # Register train with Central API
-            try:
-                success = self.api_client.register_train(controller_uuid, train_data)
-                if success:
-                    logger.info(f"Successfully registered train {train_id} with Central API")
-            except APIRegistrationError as exc:
-                # Train registration failed - log warning but continue
-                # Controller can still operate if admin manually creates train later
-                logger.warning(
-                    f"Failed to register train {train_id}: {exc}. "
-                    "Controller will continue, but train may need manual registration."
+        # Step 1.5: Register train using config if available, else use environment variables
+        train_registered = False
+        if self._service_config and "trains" in self._service_config:
+            trains = self._service_config["trains"]
+            if isinstance(trains, list) and len(trains) > 0:
+                train = trains[0]  # Only register the first train for now
+                train_id = train.get("id")
+                train_name = train.get("name")
+                motor_port = train.get("motor_port")
+                hardware_type = train.get("hardware_type", "dc_motor")
+                # Compose plugin config based on hardware_type
+                plugin_name = (
+                    "adafruit_dcmotor_hat"
+                    if hardware_type in ("simulator", "dc_motor")
+                    else hardware_type
                 )
-        else:
-            logger.info(
-                "No train configuration in environment variables. "
-                "Train must be registered manually via API."
-            )
+                train_data = {
+                    "train_id": train_id,
+                    "name": train_name,
+                    "plugin": {
+                        "name": plugin_name,
+                        "config": {"motor_port": motor_port},
+                    },
+                    "description": f"Train on motor port {motor_port}",
+                    "model": hardware_type.replace("_", " ").title(),
+                }
+                try:
+                    success = self.api_client.register_train(controller_uuid, train_data)
+                    if success:
+                        logger.info(
+                            f"Successfully registered train {train_id} from config with Central API"
+                        )
+                        train_registered = True
+                except APIRegistrationError as exc:
+                    logger.warning(
+                        f"Failed to register train {train_id} from config: {exc}. "
+                        "Controller will continue, but train may need manual registration."
+                    )
+        if not train_registered:
+            train_id = os.getenv("TRAIN_ID")
+            train_name = os.getenv("TRAIN_NAME")
+            motor_port = os.getenv("MOTOR_PORT")
+            # hardware_type is not used
+            if train_id and train_name and motor_port:
+                logger.info(
+                    f"Train configuration found in environment: id={train_id}, "
+                    f"name={train_name}, motor_port={motor_port}"
+                )
+                train_data = {
+                    "train_id": train_id,
+                    "name": train_name,
+                    "plugin": {
+                        "name": "adafruit_dcmotor_hat",
+                        "config": {"motor_port": int(motor_port)},
+                    },
+                    "description": f"Train on motor port M{motor_port}",
+                    "model": "DC Motor",
+                }
+                try:
+                    success = self.api_client.register_train(controller_uuid, train_data)
+                    if success:
+                        logger.info(f"Successfully registered train {train_id} with Central API")
+                except APIRegistrationError as exc:
+                    logger.warning(
+                        f"Failed to register train {train_id}: {exc}. "
+                        "Controller will continue, but train may need manual registration."
+                    )
+            else:
+                logger.info(
+                    "No train configuration in environment variables. "
+                    "Train must be registered manually via API."
+                )
 
         # Step 2: Try to download runtime config using new UUID
         # Admin may have pre-configured this controller, or it may return 404
@@ -397,11 +431,12 @@ class ConfigManager:
                 # Save to cache for offline operation and future refreshes
                 self.loader.save_runtime_config(runtime_config)
                 logger.info("Downloaded runtime config after registration")
-                return self._service_config, runtime_config
             except ConfigLoadError:
                 # Save failed but we have config in memory - continue anyway
                 logger.exception("Failed to save runtime config")
                 # Fall through to return None
+            else:
+                return self._service_config, runtime_config
 
         # Normal case: registered but admin hasn't assigned trains yet
         # Controller enters wait state - will poll for config updates

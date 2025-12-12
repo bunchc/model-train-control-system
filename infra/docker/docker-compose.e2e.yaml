@@ -11,7 +11,7 @@ services:
     ports:
       - "0.0.0.0:8100:8000"
     volumes:
-      - ${PWD}/config.test.yaml:/app/config.yaml:ro
+      - ${PWD}/.tmp/config.test.yaml:/app/config.yaml:ro
     networks:
       - testnet
     depends_on:
@@ -28,7 +28,7 @@ services:
     ports:
       - "0.0.0.0:5174:3000"
     volumes:
-      - ${PWD}/config.test.yaml:/app/config.yaml:ro
+      - ${PWD}/.tmp/config.test.yaml:/app/config.yaml:ro
     depends_on:
       - central_api
     networks:
@@ -55,7 +55,7 @@ services:
       MQTT_BROKER_HOST: mqtt
       MQTT_BROKER_PORT: 1883
       SIMULATION_MODE: "true"
-      CONFIG_PATH: /app/config.test.yaml
+      CONFIG_PATH: /app/edge-controller.yaml
       TRAIN_ID: "7e2b1c2a-8f3e-4b1a-9c2d-1a2b3c4d5e6f"
       TRAIN_NAME: "Test Train"
       MOTOR_PORT: "1"
@@ -65,7 +65,7 @@ services:
     networks:
       - testnet
     volumes:
-      - ${PWD}/config.test.yaml:/app/edge-controller.yaml:ro
+      - ${PWD}/.tmp/config.test.yaml:/app/edge-controller.yaml:ro
       - ${PWD}/.tmp/edge-controller.conf:/app/edge-controller.conf:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health" ]

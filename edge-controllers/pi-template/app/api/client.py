@@ -32,12 +32,19 @@ Typical usage:
 import logging
 import socket
 import time
-from http import HTTPStatus
 from typing import Any, Optional
 
 import requests
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import RequestException, Timeout
+
+
+# HTTP status code constants for readability
+HTTP_OK = 200
+HTTP_CREATED = 201
+HTTP_CONFLICT = 409
+HTTP_BAD_REQUEST = 400
+HTTP_NOT_FOUND = 404
 
 
 logger = logging.getLogger(__name__)
@@ -177,25 +184,21 @@ class CentralAPIClient:
                 # Send HTTP GET to ping endpoint
                 url = f"{self.base_url}/api/ping"
                 response = requests.get(url, timeout=self.timeout)
-
                 # Success: API responded with 200 OK
-                if response.status_code == 200:
+                if response.status_code == HTTP_OK:
                     logger.info("Central API is accessible")
                     return True  # Exit immediately on success
                 # Non-200 response: log but retry (might be temporary API issue)
-
             except (RequestException, Timeout, RequestsConnectionError) as exc:
                 # Network error: DNS failure, connection refused, timeout, etc.
                 # Log attempt number and error for debugging
                 logger.warning(
                     f"Central API not accessible (attempt {attempt + 1}/{self.max_retries}): {exc}"
                 )
-
             # Delay before next retry (unless this was the last attempt)
             # Implements simple retry with fixed delay (not exponential backoff)
             if attempt < self.max_retries - 1:
                 time.sleep(self.retry_delay)
-
         # All retries exhausted - API is unreachable
         return False
 
@@ -223,13 +226,13 @@ class CentralAPIClient:
         try:
             url = f"{self.base_url}/api/controllers/{controller_uuid}/ping"
             response = requests.get(url, timeout=self.timeout)
-            return response.status_code == 200
-
         except (RequestException, Timeout, RequestsConnectionError) as exc:
             logger.warning(f"Failed to check controller existence: {exc}")
             return False
+        else:
+            return response.status_code == HTTP_OK
 
-    def register_controller(self) -> str:
+    def register_controller(self, config: Optional[dict[str, Any]] = None) -> str:
         """Register this edge controller with the central API.
 
         Calls POST /api/controllers/register with hostname and IP address.
@@ -237,7 +240,7 @@ class CentralAPIClient:
 
         Registration Payload:
             {
-                "name": "edge-controller-01",  # socket.gethostname()
+                "name": controller_name from config or socket.gethostname(),
                 "address": "192.168.1.50"       # socket.gethostbyname()
             }
 
@@ -267,6 +270,11 @@ class CentralAPIClient:
         """
         try:
             hostname = socket.gethostname()
+            name = None
+            if config is not None:
+                name = config.get("controller_name")
+            if not name:
+                name = hostname
 
             # Attempt to get actual IP address
             try:
@@ -276,7 +284,7 @@ class CentralAPIClient:
                 ip_address = "unknown"
 
             url = f"{self.base_url}/api/controllers/register"
-            payload = {"name": hostname, "address": ip_address}
+            payload = {"name": name, "address": ip_address}
 
             response = requests.post(url, json=payload, timeout=self.timeout)
             response.raise_for_status()
@@ -289,15 +297,17 @@ class CentralAPIClient:
 
             status = data.get("status", "unknown")
             logger.info(
-                f"Registered controller: name={hostname}, uuid={controller_uuid}, status={status}"
+                f"Registered controller: name={name}, uuid={controller_uuid}, status={status}"
             )
 
+        except RequestException:
+            logger.exception("Registration request failed")
+            raise APIRegistrationError("Registration request failed") from None
+        except (KeyError, ValueError):
+            logger.exception("Invalid registration response")
+            raise APIRegistrationError("Invalid registration response") from None
+        else:
             return controller_uuid
-
-        except RequestException as exc:
-            raise APIRegistrationError(f"Registration request failed: {exc}") from exc
-        except (KeyError, ValueError) as exc:
-            raise APIRegistrationError(f"Invalid registration response: {exc}") from exc
 
     def register_train(self, controller_uuid: str, train_data: dict[str, Any]) -> bool:
         """Register a train with the central API.
@@ -363,7 +373,7 @@ class CentralAPIClient:
             response = requests.post(url, json=train_data, timeout=self.timeout)
 
             # Handle expected status codes
-            if response.status_code == 201:
+            if response.status_code == HTTP_CREATED:
                 data = response.json()
                 train_id = data.get("id", train_data.get("id", "unknown"))
                 logger.info(
@@ -371,28 +381,26 @@ class CentralAPIClient:
                 )
                 return True
 
-            elif response.status_code == 409:
+            if response.status_code == HTTP_CONFLICT:
                 # Train already exists - this is acceptable
                 logger.warning(
                     f"Train {train_data.get('id', 'unknown')} already registered (409 Conflict)"
                 )
                 return True
 
-            elif response.status_code == 400:
-                # Bad request - controller not found or invalid data
+            if response.status_code == HTTP_BAD_REQUEST:
                 error_detail = "unknown"
                 try:
                     error_data = response.json()
                     error_detail = error_data.get("detail", error_detail)
                 except Exception:
-                    pass
+                    logger.exception("Exception occurred while parsing error detail")
                 raise APIRegistrationError(f"Train registration failed (400): {error_detail}")
 
-            else:
-                # Other error status codes
-                raise APIRegistrationError(
-                    f"Train registration failed with status {response.status_code}"
-                )
+            # Other error status codes
+            raise APIRegistrationError(
+                f"Train registration failed with status {response.status_code}"
+            )
 
         except RequestException as exc:
             raise APIRegistrationError(f"Train registration request failed: {exc}") from exc
@@ -440,7 +448,7 @@ class CentralAPIClient:
             url = f"{self.base_url}/api/controllers/{controller_uuid}/config"
             response = requests.get(url, timeout=self.timeout)
 
-            if response.status_code == 404:
+            if response.status_code == HTTP_NOT_FOUND:
                 logger.info(f"No runtime config available for UUID {controller_uuid}")
                 return None
 
@@ -456,14 +464,14 @@ class CentralAPIClient:
             config_data["uuid"] = controller_uuid
 
             logger.info(f"Downloaded runtime config for UUID {controller_uuid}")
-            return config_data
-
         except RequestException:
             logger.exception("Failed to download runtime config")
             return None
         except ValueError:
             logger.exception("Invalid JSON in runtime config response")
             return None
+        else:
+            return config_data
 
     def send_heartbeat(
         self,
@@ -534,11 +542,11 @@ class CentralAPIClient:
 
             response = requests.post(url, json=payload, timeout=self.timeout)
 
-            if response.status_code == HTTPStatus.OK:
+            if response.status_code == HTTP_OK:
                 logger.debug(f"Heartbeat sent successfully for {controller_uuid}")
                 return True
 
-            if response.status_code == HTTPStatus.NOT_FOUND:
+            if response.status_code == HTTP_NOT_FOUND:
                 logger.warning(f"Heartbeat rejected: controller {controller_uuid} not found")
                 return False
 
@@ -548,4 +556,5 @@ class CentralAPIClient:
 
         except (RequestException, Timeout, RequestsConnectionError) as exc:
             logger.warning(f"Heartbeat request failed: {exc}")
+        else:
             return False
